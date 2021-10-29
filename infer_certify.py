@@ -11,6 +11,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torchvision
+import timm
 from timm.data import resolve_data_config
 from timm.data.transforms_factory import create_transform
 from timm.models import create_model
@@ -20,7 +21,7 @@ from torchvision.transforms.transforms import ToTensor
 
 from smoothadv.core import Smooth
 from smoothadv.patch_model import PreprocessLayer
-from smoothadv.patch_models import PatchModel
+from smoothadv.patch_model import PatchModel
 
 
 def build_parser():
@@ -28,7 +29,7 @@ def build_parser():
     parser.add_argument(
         '-o', '--outdir', help='Output directory', default='results/')
     #parser.add_argument('-m', '--model', help='Model path')
-    parser.add_argument('-mt', '--mtype', help='Model type')
+    parser.add_argument('-mt', '--mtype', help='Model type', choices=timm.list_models(pretrained=True))
     parser.add_argument('-dpath', help='Data path',
                         default='/data/datasets/Imagenet/val')
     parser.add_argument('--gpu', help='gpu to use', default='0', type=str)
@@ -41,7 +42,8 @@ def build_parser():
     parser.add_argument('-ps', '--patch_size',
                         help='Patch size', default=224, type=int)
     parser.add_argument('-pstr', '--patch_stride',
-                        help='Patch Stride', degfault=1, type=int)
+                        help='Patch Stride', default=1, type=int)
+    parser.add_argument('-np', '--num_patches',help='Maximum number of patches to consider for patch ensemble', type=int, default=10000)
     parser.add_argument('-si', '--start_idx',
                         help='Start index for imagenet', default=0, type=int)
     parser.add_argument("--batch", type=int, default=1000, help="batch size")
@@ -58,9 +60,11 @@ def build_parser():
 def build_model(args, smooth=True, patchify=True, pretrained=True):
     base_model = create_model(args.mtype, pretrained=pretrained)
     config = resolve_data_config({}, model=base_model)
+    config['input_size'] = (3,256 ,256) # Hardocoded to ensure additional patches for now.
     preprocess = PreprocessLayer(config)
     if patchify:
-        base_model = PatchModel(base_model, args.patch_size, args.patch_size)
+        # print('args', args.patch_size, args.patch_stride)
+        base_model = PatchModel(base_model, num_patches=args.num_patches, patch_size = args.patch_size, patch_stride=args.patch_stride)
     if smooth:
         model = Smooth(nn.Sequential(preprocess, base_model), num_classes=1000,
                        sigma=args.sigma)  # num classes hardocded for imagenet
@@ -85,20 +89,21 @@ if __name__ == '__main__':
     # Load data
     indices = np.load('imagenet_indices.npy')
     imagenet_val = Subset(
-        ImageNet(root=args.dpath, split='val', transforms=ToTensor()), indices)
+        ImageNet(root=args.dpath, split='val', transform=ToTensor()), indices)
     test_dl = DataLoader(imagenet_val, batch_size=1)
     # Load model
 
     smooth_model = build_model(
         args, smooth=True, patchify=True, pretrained=True)
-    smooth_model.eval()
-    smooth_model.to(device)
+    smooth_model.base_classifier.eval()
+    smooth_model.base_classifier.to(device)
 
     outfile = open(
         outdir / f'output_{args.mtype}_{args.sigma}_{args.patch_size}_{args.patch_stride}.csv', 'w')
-    print("idx\tlabel\tpredict\tradius\tcorrect\ttime", file=f, flush=True)
+    print("idx\tlabel\tpredict\tradius\tcorrect\ttime", file=outfile, flush=True)
 
     for idx, (x, y) in enumerate(test_dl):
+        print(idx, flush=True)
         if idx < args.start_idx:
             continue
         if idx >= args.start_idx + args.num_images:
@@ -112,7 +117,7 @@ if __name__ == '__main__':
         toc = perf_counter()
         correct = int(prediction == y)
         time_elapsed = str(datetime.timedelta(seconds=(toc - tic)))
-        print(f'{idx}\t{y}\t{prediction}\t{radius}\t{correct}\t{time_elapsed}',
-              file=f, flush=True)
+        print(f'{idx}\t{y.item()}\t{prediction}\t{radius}\t{correct}\t{time_elapsed}',
+              file=outfile, flush=True)
 
-    f.close()
+    outfile.close()
