@@ -8,6 +8,10 @@ from architectures import get_architecture
 from core import Smooth
 from datasets import get_dataset, DATASETS, get_num_classes
 import torch
+from torchvision import transforms
+from torchvision.datasets import ImageNet
+from torch.utils.data import DataLoader, Subset
+import numpy as np
 
 
 parser = argparse.ArgumentParser(description='Certify many examples')
@@ -38,8 +42,14 @@ if __name__ == "__main__":
     print("idx\tlabel\tpredict\tradius\tcorrect\ttime", file=f, flush=True)
 
     # iterate through the dataset
-    dataset = get_dataset(args.dataset, args.split)
-    for i in range(len(dataset)):
+    #dataset = get_dataset(args.dataset, args.split)
+    indices = np.load('./imagenet_indices.npy')
+    dataset = Subset(
+        ImageNet(root='/scratch/aaj458/data/ImageNet/val', split='val', transform=transforms.Compose([transforms.Resize(256),
+            transforms.CenterCrop(224),transforms.ToTensor()])), indices)
+    test_dl = DataLoader(dataset, batch_size=1)
+
+    for i, (x, label) in enumerate(test_dl):
 
         # only certify every args.skip examples, and stop after args.max examples
         if i % args.skip != 0:
@@ -47,7 +57,7 @@ if __name__ == "__main__":
         if i == args.max:
             break
 
-        (x, label) = dataset[i]
+        #(x, label) = dataset[i]
 
         before_time = time()
         # certify the prediction of g around x

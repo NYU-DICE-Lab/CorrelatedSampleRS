@@ -54,6 +54,9 @@ def build_parser():
                         help="failure probability")
     parser.add_argument(
         '-sigma', '--sigma', help='Sigma for smoothing noise', default=0.1, type=float)
+    parser.add_argument(
+        '-patch', '--patch', help='use patche-wise ensembling model (default smoothing without patches).', 
+        action='store_true')
     return parser
 
 
@@ -63,6 +66,7 @@ def build_model(args, smooth=True, patchify=True, pretrained=True):
     config['input_size'] = (3,256 ,256) # Hardocoded to ensure additional patches for now.
     preprocess = PreprocessLayer(config)
     if patchify:
+        print('patchify')
         # print('args', args.patch_size, args.patch_stride)
         base_model = PatchModel(base_model, num_patches=args.num_patches, patch_size = args.patch_size, patch_stride=args.patch_stride)
     if smooth:
@@ -94,7 +98,7 @@ if __name__ == '__main__':
     # Load model
 
     smooth_model = build_model(
-        args, smooth=True, patchify=True, pretrained=True)
+        args, smooth=True, patchify=args.patch, pretrained=True)
     smooth_model.base_classifier.eval()
     smooth_model.base_classifier.to(device)
 
