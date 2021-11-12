@@ -31,9 +31,10 @@ args = parser.parse_args()
 if __name__ == "__main__":
     # load the base classifier
     checkpoint = torch.load(args.base_classifier)
+    print(checkpoint['arch'])
     base_classifier = get_architecture(checkpoint["arch"], args.dataset)
     base_classifier.load_state_dict(checkpoint['state_dict'])
-
+    print(base_classifier)
     # create the smooothed classifier g
     smoothed_classifier = Smooth(base_classifier, get_num_classes(args.dataset), args.sigma)
 
@@ -56,7 +57,7 @@ if __name__ == "__main__":
             continue
         if i == args.max:
             break
-
+        print(x.min(), x.max())
         #(x, label) = dataset[i]
 
         before_time = time()
@@ -68,6 +69,6 @@ if __name__ == "__main__":
 
         time_elapsed = str(datetime.timedelta(seconds=(after_time - before_time)))
         print("{}\t{}\t{}\t{:.3}\t{}\t{}".format(
-            i, label, prediction, radius, correct, time_elapsed), file=f, flush=True)
+            i, label.item(), prediction, radius, correct, time_elapsed), file=f, flush=True)
 
     f.close()
