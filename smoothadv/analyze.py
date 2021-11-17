@@ -2,7 +2,7 @@ import math
 import os 
 
 import matplotlib
-matplotlib.use("TkAgg")
+#matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -96,13 +96,14 @@ def plot_certified_accuracy(outfile: str, title: str, max_radius: float,
     plt.tick_params(labelsize=14)
     plt.xlabel("radius", fontsize=16)
     plt.ylabel("certified accuracy", fontsize=16)
-    plt.legend([method.legend for method in lines if method.legend is not None], loc='upper right', fontsize=16)
+    plt.legend([method.legend for method in lines if method.legend is not None], loc='lower left', bbox_to_anchor=(1.0, 0.5), fontsize=16)
     plt.tight_layout()
+    #plt.show()
     plt.savefig(outfile + ".pdf")
     plt.title(title, fontsize=20)
     plt.tight_layout()
     plt.savefig(outfile + ".png", dpi=300)
-    plt.close()
+    #plt.close()
 
 
 def plot_certified_accuracy_per_sigma_against_original_one_sample(outfile: str, title: str, max_radius: float,
