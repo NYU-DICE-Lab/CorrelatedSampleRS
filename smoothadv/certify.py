@@ -31,7 +31,7 @@ args = parser.parse_args()
 if __name__ == "__main__":
     # load the base classifier
     checkpoint = torch.load(args.base_classifier)
-    print(checkpoint['arch'])
+    print(checkpoint['arch'], args.dataset)
     base_classifier = get_architecture(checkpoint["arch"], args.dataset)
     base_classifier.load_state_dict(checkpoint['state_dict'])
     print(base_classifier)
@@ -45,21 +45,23 @@ if __name__ == "__main__":
     # iterate through the dataset
     #dataset = get_dataset(args.dataset, args.split)
     indices = np.load('./imagenet_indices.npy')
+    #dpath = '/data/datasets/ImageNet/val/'
+    dpath = '/scratch/aaj458/data/ImageNet/val/'
     dataset = Subset(
-        ImageNet(root='/scratch/aaj458/data/ImageNet/val', split='val', transform=transforms.Compose([transforms.Resize(256),
-            transforms.CenterCrop(224),transforms.ToTensor()])), indices)
+         ImageNet(root=dpath, split='val', transform=transforms.Compose([transforms.Resize(256),
+             transforms.CenterCrop(224),transforms.ToTensor()])), indices)
     test_dl = DataLoader(dataset, batch_size=1)
 
     for i, (x, label) in enumerate(test_dl):
-
+    #for i in range(args.max):
         # only certify every args.skip examples, and stop after args.max examples
         if i % args.skip != 0:
             continue
         if i == args.max:
             break
-        print(x.min(), x.max())
+        # print(x.min(), x.max())
         #(x, label) = dataset[i]
-
+        print(x.min(), x.max(), label)
         before_time = time()
         # certify the prediction of g around x
         x = x.cuda()
@@ -68,7 +70,9 @@ if __name__ == "__main__":
         correct = int(prediction == label)
 
         time_elapsed = str(datetime.timedelta(seconds=(after_time - before_time)))
+        #print("{}\t{}\t{}\t{:.3}\t{}\t{}".format(
+        #    i, label.item(), prediction, radius, correct, time_elapsed), file=f, flush=True)
         print("{}\t{}\t{}\t{:.3}\t{}\t{}".format(
-            i, label.item(), prediction, radius, correct, time_elapsed), file=f, flush=True)
+            i, label, prediction, radius, correct, time_elapsed), file=f, flush=True)
 
     f.close()
