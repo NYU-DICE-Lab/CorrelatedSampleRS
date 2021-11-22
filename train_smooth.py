@@ -11,11 +11,17 @@ import torchvision
 from torchvision import datasets, models, transforms
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import CIFAR10, ImageNet
-from torchvision.transforms.transforms import ToTensor
+from torchvision.transforms.transforms import ToTensor, Resize, Compose
 from pathlib import Path
+import argparse
 
+import torch.nn.parallel
+import torch.backends.cudnn as cudnn
+import torch.distributed as dist
+import torch.optim
+import torch.multiprocessing as mp
+import torch.utils.data.distributed
 
-import matplotlib.pyplot as plt
 import time
 import os
 from pathlib import Path
@@ -24,14 +30,16 @@ from timm.data import resolve_data_config
 from timm.data.transforms_factory import create_transform
 from timm.models import create_model
 from smoothadv.core import Smooth
-from smoothadv.attacks import DDN, PGD_L2
+from smoothadv.attacks import DDN, PGD_L2, Attacker
 from smoothadv.patch_model import PreprocessLayer
 from smoothadv.patch_model import PatchModel
 from smoothadv.train_utils import AverageMeter, accuracy, requires_grad_
 
+best_acc1 = 0.
+ 
 def build_parser():
     parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-    parser.add_argument('dataset', type=str, choices=DATASETS)
+    parser.add_argument('dataset', type=str, choices=['imagenet', 'cifar10', 'cifar100 '])
     parser.add_argument('-mt', '--mtype', help='Model type',
                         choices=timm.list_models(pretrained=True))
     parser.add_argument('-mpath', '--mpath', help='Path to model', default=None, type=str)
@@ -42,8 +50,7 @@ def build_parser():
     parser.add_argument('--pretrained', action='store_true', help='Use pretrained imagenet model from TIMM')
     parser.add_argument('--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-    parser.add_argument('--epochs', default=90, type=int, metavar='N',
-                        help='number of total epochs to run')
+    parser.add_argument('--epochs', '-epochs', help='total epochs to run', default=10000, type=int)
     parser.add_argument('--batch', default=256, type=int, metavar='N',
                         help='batchsize (default: 256)')
     parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
@@ -75,6 +82,7 @@ def build_parser():
     parser.add_argument(
         '-patch', '--patch', help='use patche-wise ensembling model (default smoothing without patches).',
         action='store_true')
+    parser.add_argument('--parallel', '-parallel', action='store_true', help='Use multiple GPUs')
     #####################
     # Attack params
     parser.add_argument('--adv-training', action='store_true')
@@ -114,7 +122,7 @@ def build_model(args, smooth=True, patchify=True, pretrained=True):
                                 patch_size=args.patch_size, patch_stride=args.patch_stride)
     if smooth:
         model = Smooth(nn.Sequential(preprocess, base_model), num_classes=1000,
-                       sigma=args.sigma)  # num classes hardocded for imagenet
+                       sigma=args.noise_sd)  # num classes hardocded for imagenet
     else:
         model = base_model
     return model
@@ -125,32 +133,57 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
 
+    if args.parallel:
+        # Start multiple processes
+        args.rank = int(os.environ['RANK'])
+        args.world_size = -1
+        dist.init_process_group(backend='nccl', init_method='env://', world_size=-1, rank=-1)
+    else:
+        args.rank = 0
+        args.world_size = 1
+
     args.epsilon = args.epsilon / 255.0
     args.init_norm_DDN = args.init_norm_DDN / 255.0
 
     # Set the random seed manually for reproducibility.
     torch.manual_seed(0)
-    if args.gpu:
-        os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
+    # if args.gpu:
+    #     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
+    
 
     if not os.path.exists(args.outdir):
         os.makedirs(args.outdir)
     outdir = Path(args.outdir)
     outfile = open(
-        outdir / f'logs_{args.mtype}_{args.sigma}_{args.patch_size}_{args.patch_stride}.log', 'w')
-    model_path = args.outdir / f'model_{args.mtype}_{args.sigma}_{args.patch_size}_{args.patch_stride}.pth'
+        outdir / f'logs_{args.mtype}_{args.noise_sd}_{args.patch_size}_{args.patch_stride}.log', 'w')
+    model_path = args.outdir / Path(f'model_{args.mtype}_{args.noise_sd}_{args.patch_size}_{args.patch_stride}.pth')
     #print("idx\tlabel\tpredict\tradius\tcorrect\ttime", file=outfile, flush=True)
+    n_gpus = torch.cuda.device_count()
+    if args.parallel:
+        print('Using', n_gpus, 'GPUs')
+        mp.spawn(main_worker, nprocs=n_gpus, args=(args, outfile, model_path))
+    else:
+        # Single node, single GPU
+        main_worker(n_gpus, n_gpus, args, outfile, model_path) 
+
+def main_worker(gpus, n_gpus, args, outfile, model_path):
+    global best_acc1
+
 
     ################################################################################
     # Load data
     ################################################################################
     if args.dataset == 'imagenet':
         imagenet_train = ImageNet(
-            root=args.dpath, split='train', transform=ToTensor())
+            root=args.dpath, split='train', transform=Compose([Resize((256,256)), ToTensor()]))
+        if args.parallel:
+            sampler = torch.utils.data.distributed.DistributedSampler(imagenet_train)
+        else:
+            sampler = None
         train_dl = DataLoader(
-            imagenet_train, batch_size=args.batch, shuffle=True, num_workers=args.workers)
+            imagenet_train, batch_size=args.batch, shuffle=True, num_workers=args.workers, sampler=sampler)
         imagenet_val = ImageNet(
-            root=args.dpath, split='val', transform=ToTensor())
+            root=args.dpath / Path('val'), split='val', transform=Compose([Resize((256,256)), ToTensor()]))
         val_dl = DataLoader(imagenet_val, batch_size=args.batch,
                             shuffle=False, num_workers=args.workers)
     elif args.dataset == 'cifar10' or args.dataset == 'cifar100':
@@ -161,7 +194,10 @@ def main():
     ################################################################################
     # Build model
     ################################################################################
-    model = build_model(args, patchify=args.patch, pretrained=args.pretrained)
+    model = build_model(args, smooth=False, patchify=args.patch, pretrained=args.pretrained)
+    model.cuda()
+    if args.parallel:
+        model = nn.parallel.DistributedDataParallel(model, device_ids=[gpus])
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step_size, gamma=args.gamma)
@@ -181,36 +217,45 @@ def main():
     #     model = get_architecture(args.arch, args.dataset) 
     if args.attack == 'PGD':
         print('Attacker is PGD')
-        attacker = PGD_L2(steps=args.num_steps, device='cuda', max_norm=args.epsilon)
+        attacker = PGD_L2(steps=args.num_steps, device=torch.device('cuda'), max_norm=args.epsilon)
     elif args.attack == 'DDN':
         print('Attacker is DDN')
-        attacker = DDN(steps=args.num_steps, device='cuda', max_norm=args.epsilon, 
+        attacker = DDN(steps=args.num_steps, device=torch.device('cuda'), max_norm=args.epsilon, 
                     init_norm=args.init_norm_DDN, gamma=args.gamma_DDN)
     else:
         raise Exception('Unknown attack')
     
     for epoch in range(args.epochs):
-        scheduler.step(epoch)
         attacker.max_norm = np.min([args.epsilon, (epoch + 1) * args.epsilon/args.warmup])
         attacker.init_norm = np.min([args.epsilon, (epoch + 1) * args.epsilon/args.warmup])
 
         before = time.time()
         train_loss, train_acc = train(args, train_dl, model, criterion, optimizer, epoch, args.noise_sd, attacker)
         test_loss, test_acc, test_acc_normal = test(args, val_dl, model, criterion, args.noise_sd, attacker)
+        scheduler.step(epoch)
         after = time.time()
 
         if args.adv_training:
             print(f'{epoch}\t{after - before}\t{scheduler.get_lr()[0]}\t{train_loss}\t{test_loss}\t{train_acc}\t{test_acc}\t{test_acc_normal}', file=outfile, flush=True)
         else:
             print(f'{epoch}\t{after - before}\t{scheduler.get_lr()[0]}\t{train_loss}\t{test_loss}\t{train_acc}\t{test_acc}', file=outfile, flush=True)
-        torch.save({
-            'epoch': epoch + 1,
-            'arch': args.mtype,
-            'state_dict': model.state_dict(),
-            'optimizer': optimizer.state_dict(),
-        }, model_path)
+        if not args.parallel or (args.parallel and args.rank % ngpus == 0 ):
+            torch.save({
+                'epoch': epoch + 1,
+                'arch': args.mtype,
+                'state_dict': model.state_dict(),
+                'optimizer': optimizer.state_dict(),
+            }, model_path)
 
-def train(args, loader: DataLoader, model: torch.nn.Module, criterion, optimizer: nn.optim.Optimizer, 
+def get_minibatches(batch, num_batches):
+    X = batch[0]
+    y = batch[1]
+
+    batch_size = len(X) // num_batches
+    for i in range(num_batches):
+        yield X[i*batch_size : (i+1)*batch_size], y[i*batch_size : (i+1)*batch_size]
+
+def train(args, loader: DataLoader, model: torch.nn.Module, criterion, optimizer: optim.Optimizer, 
         epoch: int, noise_sd: float, attacker: Attacker=None):
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -223,10 +268,10 @@ def train(args, loader: DataLoader, model: torch.nn.Module, criterion, optimizer
     model.train()
     requires_grad_(model, True)
 
-    for i, (batch, dataLoaderIdx) in enumerate(loader):
+    for i, batch in enumerate(loader):
         # measure data loading time
         data_time.update(time.time() - end)     
-
+        # print(batch[0].shape)
         mini_batches = get_minibatches(batch, args.num_noise_vec)
         noisy_inputs_list = []
         for inputs, targets in mini_batches:
@@ -255,7 +300,7 @@ def train(args, loader: DataLoader, model: torch.nn.Module, criterion, optimizer
                 targets = targets.unsqueeze(1).repeat(1, args.num_noise_vec).reshape(-1,1).squeeze()
                 outputs = model(noisy_inputs)
                 loss = criterion(outputs, targets)
-
+                # print(outputs.shape, targets.shape)
                 acc1, acc5 = accuracy(outputs, targets, topk=(1, 5))
                 losses.update(loss.item(), noisy_inputs.size(0))
                 top1.update(acc1.item(), noisy_inputs.size(0))
@@ -281,7 +326,6 @@ def train(args, loader: DataLoader, model: torch.nn.Module, criterion, optimizer
 
             outputs = model(noisy_inputs)
             loss = criterion(outputs, targets)
-
             # measure accuracy and record loss
             acc1, acc5 = accuracy(outputs, targets, topk=(1, 5))
             losses.update(loss.item(), noisy_inputs.size(0))
@@ -377,3 +421,6 @@ def test(args, loader: DataLoader, model: torch.nn.Module, criterion, noise_sd: 
             return (losses.avg, top1.avg, top1_normal.avg)
         else:
             return (losses.avg, top1.avg, None)
+
+if __name__ == '__main__':
+    main()
