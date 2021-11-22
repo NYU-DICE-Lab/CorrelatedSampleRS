@@ -22,6 +22,7 @@ import torch.distributed as dist
 import torch.optim
 import torch.multiprocessing as mp
 import torch.utils.data.distributed
+from torch.nn import DataParallel
 
 import time
 import os
@@ -135,14 +136,14 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
 
-    if args.parallel:
-        # Start multiple processes
-        args.rank = int(os.environ['RANK'])
-        args.world_size = -1
-        dist.init_process_group(backend='nccl', init_method='env://', world_size=-1, rank=-1)
-    else:
-        args.rank = 0
-        args.world_size = 1
+    # if args.parallel:
+    #     # Start multiple processes
+    #     args.rank = int(os.environ['RANK'])
+    #     args.world_size = -1
+    #     dist.init_process_group(backend='nccl', init_method='env://', world_size=-1, rank=-1)
+    # else:
+    #     args.rank = 0
+    #     args.world_size = 1
 
     args.epsilon = args.epsilon / 255.0
     args.init_norm_DDN = args.init_norm_DDN / 255.0
@@ -155,20 +156,20 @@ def main():
 
     if not os.path.exists(args.outdir):
         os.makedirs(args.outdir)
-    outdir = Path(args.outdir)
-    outfile = open(outdir / f'logs_{args.mtype}_{args.noise_sd}_{args.patch_size}_{args.patch_stride}.log', 'w')
+    args.outdir = Path(args.outdir)
+    outfile = open(args.outdir / f'logs_{args.mtype}_{args.noise_sd}_{args.patch_size}_{args.patch_stride}.log', 'w')
     model_path = args.outdir / Path(f'model_{args.mtype}_{args.noise_sd}_{args.patch_size}_{args.patch_stride}.pth')
     #print("idx\tlabel\tpredict\tradius\tcorrect\ttime", file=outfile, flush=True)
     args.outfile = outfile
     args.model_path = model_path
     n_gpus = torch.cuda.device_count()
     print(f'Using {n_gpus} GPUs')
-    if args.parallel:
-        print('Using', n_gpus, 'GPUs')
-        mp.spawn(main_worker, nprocs=n_gpus, args=args)
-    else:
-        # Single node, single GPU
-        main_worker(n_gpus, n_gpus, args, outfile, model_path) 
+    # if args.parallel:
+    #     print('Using', n_gpus, 'GPUs')
+    #     mp.spawn(main_worker, nprocs=n_gpus, args=args)
+    # else:
+    #     # Single node, single GPU
+    main_worker(n_gpus, n_gpus, args) 
 
 def main_worker(gpus, n_gpus, args):
     outfile = args.outfile
@@ -180,10 +181,10 @@ def main_worker(gpus, n_gpus, args):
     if args.dataset == 'imagenet':
         imagenet_train = ImageNet(
             root=args.dpath, split='train', transform=Compose([Resize((256,256)), ToTensor()]))
-        if args.parallel:
-            sampler = torch.utils.data.distributed.DistributedSampler(imagenet_train)
-        else:
-            sampler = None
+        # if args.parallel:
+        #     sampler = torch.utils.data.distributed.DistributedSampler(imagenet_train)
+        # else:
+        sampler = None
         train_dl = DataLoader(
             imagenet_train, batch_size=args.batch, shuffle=True, num_workers=args.workers, sampler=sampler)
         imagenet_val = ImageNet(
@@ -198,10 +199,13 @@ def main_worker(gpus, n_gpus, args):
     ################################################################################
     # Build model
     ################################################################################
-    model = build_model(args, smooth=False, patchify=args.patch, pretrained=args.pretrained)
-    model.cuda()
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = build_model(args, smooth=False, patchify=args.patch, pretrained=args.pretrained).to(device)
     if args.parallel:
-        model = nn.parallel.DistributedDataParallel(model, device_ids=[gpus])
+        model = nn.DataParallel(model)
+    #model.cuda()
+    # if args.parallel:
+    #     model = nn.parallel.DistributedDataParallel(model, device_ids=[gpus])
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step_size, gamma=args.gamma)
@@ -243,13 +247,13 @@ def main_worker(gpus, n_gpus, args):
             print(f'{epoch}\t{after - before}\t{scheduler.get_lr()[0]}\t{train_loss}\t{test_loss}\t{train_acc}\t{test_acc}\t{test_acc_normal}', file=outfile, flush=True)
         else:
             print(f'{epoch}\t{after - before}\t{scheduler.get_lr()[0]}\t{train_loss}\t{test_loss}\t{train_acc}\t{test_acc}', file=outfile, flush=True)
-        if not args.parallel or (args.parallel and args.rank % ngpus == 0 ):
-            torch.save({
-                'epoch': epoch + 1,
-                'arch': args.mtype,
-                'state_dict': model.state_dict(),
-                'optimizer': optimizer.state_dict(),
-            }, model_path)
+        # if not args.parallel or (args.parallel and args.rank % ngpus == 0 ):
+        torch.save({
+            'epoch': epoch + 1,
+            'arch': args.mtype,
+            'state_dict': model.state_dict(),
+            'optimizer': optimizer.state_dict(),
+        }, model_path)
 
 def get_minibatches(batch, num_batches):
     X = batch[0]
@@ -285,7 +289,7 @@ def train(args, loader: DataLoader, model: torch.nn.Module, criterion, optimizer
             inputs = inputs.repeat((1, args.num_noise_vec, 1, 1)).view(batch[0].shape)
 
             # augment inputs with noise
-            noise = torch.randn_like(inputs, device='cuda') * noise_sd
+            noise = torch.randn_like(inputs, device=inputs.device) * noise_sd
 
             if args.adv_training:
                 requires_grad_(model, False)

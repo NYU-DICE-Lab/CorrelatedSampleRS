@@ -16,7 +16,7 @@ class Attacker(metaclass=ABCMeta):
 
 
 # Modification of the code from https://github.com/jeromerony/fast_adversarial
-class PGD_L2(Attacker):
+class PGD_L2(Attacker, nn.Module):
     """
     PGD attack
 
@@ -44,6 +44,8 @@ class PGD_L2(Attacker):
 
     def attack(self, model: nn.Module, inputs: torch.Tensor, labels: torch.Tensor,
                noise: torch.Tensor = None, num_noise_vectors=1, targeted: bool = False, no_grad=False) -> torch.Tensor:
+        self.device = inputs.device
+        #print(self.device, labels.device)
         if num_noise_vectors == 1:
             return self._attack(model, inputs, labels, noise, targeted)
         else:
@@ -80,7 +82,7 @@ class PGD_L2(Attacker):
     
         batch_size = inputs.shape[0]
         multiplier = 1 if targeted else -1
-        delta = torch.zeros_like(inputs, requires_grad=True)
+        delta = torch.zeros_like(inputs, requires_grad=True, device=self.device)
 
         # Setup optimizers
         optimizer = optim.SGD([delta], lr=self.max_norm/self.steps*2)
@@ -89,6 +91,7 @@ class PGD_L2(Attacker):
             adv = inputs + delta
             if noise is not None:
                 adv = adv + noise
+            #print(adv.device)
             logits = model(adv)
             pred_labels = logits.argmax(1)
             ce_loss = F.cross_entropy(logits, labels, reduction='sum')
@@ -246,7 +249,7 @@ class PGD_L2(Attacker):
 
 
 # Source code from https://github.com/jeromerony/fast_adversarial
-class DDN(Attacker):
+class DDN(Attacker, nn.Module):
     """
     DDN attack: decoupling the direction and norm of the perturbation to achieve a small L2 norm in few steps.
 
