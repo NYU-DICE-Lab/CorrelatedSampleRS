@@ -2,6 +2,7 @@
 Training script
 """
 
+from pandas._libs.tslibs.conversion import OutOfBoundsTimedelta
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -83,6 +84,7 @@ def build_parser():
         '-patch', '--patch', help='use patche-wise ensembling model (default smoothing without patches).',
         action='store_true')
     parser.add_argument('--parallel', '-parallel', action='store_true', help='Use multiple GPUs')
+    parser.add_argument('--local_rank','-local_rank', type=int, default=0)
     #####################
     # Attack params
     parser.add_argument('--adv-training', action='store_true')
@@ -154,21 +156,23 @@ def main():
     if not os.path.exists(args.outdir):
         os.makedirs(args.outdir)
     outdir = Path(args.outdir)
-    outfile = open(
-        outdir / f'logs_{args.mtype}_{args.noise_sd}_{args.patch_size}_{args.patch_stride}.log', 'w')
+    outfile = open(outdir / f'logs_{args.mtype}_{args.noise_sd}_{args.patch_size}_{args.patch_stride}.log', 'w')
     model_path = args.outdir / Path(f'model_{args.mtype}_{args.noise_sd}_{args.patch_size}_{args.patch_stride}.pth')
     #print("idx\tlabel\tpredict\tradius\tcorrect\ttime", file=outfile, flush=True)
+    args.outfile = outfile
+    args.model_path = model_path
     n_gpus = torch.cuda.device_count()
+    print(f'Using {n_gpus} GPUs')
     if args.parallel:
         print('Using', n_gpus, 'GPUs')
-        mp.spawn(main_worker, nprocs=n_gpus, args=(args, outfile, model_path))
+        mp.spawn(main_worker, nprocs=n_gpus, args=args)
     else:
         # Single node, single GPU
         main_worker(n_gpus, n_gpus, args, outfile, model_path) 
 
-def main_worker(gpus, n_gpus, args, outfile, model_path):
-    global best_acc1
-
+def main_worker(gpus, n_gpus, args):
+    outfile = args.outfile
+    model_path = args.model_path
 
     ################################################################################
     # Load data
