@@ -46,7 +46,8 @@ def build_parser():
                         choices=timm.list_models(pretrained=True))
     parser.add_argument('-mpath', '--mpath', help='Path to model', default=None, type=str)
     parser.add_argument('-dpath', help='Data path',
-                        default='/data/datasets/Imagenet/val')
+                        default='/data/datasets/Imagenet/')
+    parser.add_argument('-dvalpath', '--dvalpath', help='Path to validation dataset (only required for cluster use)', default=None, type=str)
     parser.add_argument(
         '-o', '--outdir', help='Output directory', default='results/')
     parser.add_argument('--pretrained', action='store_true', help='Use pretrained imagenet model from TIMM')
@@ -179,6 +180,8 @@ def main_worker(gpus, n_gpus, args):
     # Load data
     ################################################################################
     if args.dataset == 'imagenet':
+        if args.dvalpath is None:
+            args.dvalpath = args.dpath /Path('val')
         imagenet_train = ImageNet(
             root=args.dpath, split='train', transform=Compose([Resize((256,256)), ToTensor()]))
         # if args.parallel:
@@ -188,7 +191,7 @@ def main_worker(gpus, n_gpus, args):
         train_dl = DataLoader(
             imagenet_train, batch_size=args.batch, shuffle=True, num_workers=args.workers, sampler=sampler)
         imagenet_val = ImageNet(
-            root=args.dpath / Path('val'), split='val', transform=Compose([Resize((256,256)), ToTensor()]))
+            root=args.dvalpath, split='val', transform=Compose([Resize((256,256)), ToTensor()]))
         val_dl = DataLoader(imagenet_val, batch_size=args.batch,
                             shuffle=False, num_workers=args.workers)
     elif args.dataset == 'cifar10' or args.dataset == 'cifar100':
