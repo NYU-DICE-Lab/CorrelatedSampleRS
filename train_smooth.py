@@ -27,6 +27,7 @@ from torch.nn import DataParallel
 import time
 import os
 from pathlib import Path
+from smoothadv.architectures import get_architecture
 import timm
 from timm.data import resolve_data_config
 from timm.data.transforms_factory import create_transform
@@ -43,7 +44,7 @@ def build_parser():
     parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
     parser.add_argument('dataset', type=str, choices=['imagenet', 'cifar10', 'cifar100 '])
     parser.add_argument('-mt', '--mtype', help='Model type',
-                        choices=timm.list_models(pretrained=True))
+                        choices=timm.list_models(pretrained=True).extend(['cifar_resnet20', 'cifar_resnet110']))
     parser.add_argument('-mpath', '--mpath', help='Path to model', default=None, type=str)
     parser.add_argument('-dpath', help='Data path',
                         default='/data/datasets/Imagenet/')
@@ -114,18 +115,25 @@ def build_parser():
 
 
 def build_model(args, smooth=True, patchify=True, pretrained=True):
-    base_model = create_model(args.mtype, pretrained=pretrained)
-    config = resolve_data_config({}, model=base_model)
+    if args.dataset == 'imagenet':
+        base_model = create_model(args.mtype, pretrained=pretrained)
+        config = resolve_data_config({}, model=base_model)
+        config['input_size'] = (3, 256, 256)
+        preprocess = PreprocessLayer(config)
+        num_classes = 1000
+    elif args.dataset == 'cifar10':
+        base_model = get_architecture(args.mtype, args.dataset, normalize=True)
+        num_classes = 10
     # Hardocoded to ensure additional patches for now.
-    config['input_size'] = (3, 256, 256)
-    preprocess = PreprocessLayer(config)
     if patchify:
         print('patchify')
         # print('args', args.patch_size, args.patch_stride)
         base_model = PatchModel(base_model, num_patches=args.num_patches,
-                                patch_size=args.patch_size, patch_stride=args.patch_stride)
+                                patch_size=args.patch_size, patch_stride=args.patch_stride, num_classes=num_classes)
+    if args.dataset == 'imagenet': # needs to be done after patchify
+        model = nn.Sequential(preprocess, base_model)
     if smooth:
-        model = Smooth(nn.Sequential(preprocess, base_model), num_classes=1000,
+        model = Smooth(base_model, num_classes=1000,
                        sigma=args.noise_sd)  # num classes hardocded for imagenet
     else:
         model = base_model
@@ -194,8 +202,12 @@ def main_worker(gpus, n_gpus, args):
             root=args.dvalpath, split='val', transform=Compose([Resize((256,256)), ToTensor()]))
         val_dl = DataLoader(imagenet_val, batch_size=args.batch,
                             shuffle=False, num_workers=args.workers)
-    elif args.dataset == 'cifar10' or args.dataset == 'cifar100':
-        raise Exception('Not implemented yet!')
+    elif args.dataset == 'cifar10':
+        cifar10_train = CIFAR10(root=args.dpath, train=True, download=True, transform=Compose([Resize((36,36)), ToTensor()]))
+        cifar10_test = CIFAR10(root=args.dpath, train=False, download=True, transform=Compose([Resize((36,36)), ToTensor()]))
+        train_dl = DataLoader(cifar10_train, batch_size=args.batch, shuffle=True, num_workers=args.workers)
+        val_dl = DataLoader(cifar10_test, batch_size=args.batch,
+                            shuffle=False, num_workers=args.workers)
     else:
         raise Exception('Unknown dataset!')
 
@@ -392,7 +404,6 @@ def test(args, loader: DataLoader, model: torch.nn.Module, criterion, noise_sd: 
             # augment inputs with noise
             noise = torch.randn_like(inputs, device='cuda') * noise_sd
             noisy_inputs = inputs + noise
-            
             # compute output
             if args.adv_training:
                 normal_outputs = model(noisy_inputs)

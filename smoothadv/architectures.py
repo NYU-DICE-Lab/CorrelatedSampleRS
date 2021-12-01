@@ -1,5 +1,5 @@
-from archs.cifar_resnet import resnet as resnet_cifar
-from datasets import get_normalize_layer, get_input_center_layer
+from .archs.cifar_resnet import resnet as resnet_cifar
+from .datasets import get_normalize_layer, get_input_center_layer
 import torch
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
@@ -12,13 +12,14 @@ from torchvision.models.resnet import resnet50
 # cifar_resnet110 - a 110-layer residual network sized for CIFAR
 ARCHITECTURES = ["resnet50", "cifar_resnet110", "imagenet32_resnet110"]
 
-def get_architecture(arch: str, dataset: str) -> torch.nn.Module:
+def get_architecture(arch: str, dataset: str, normalize: bool=False) -> torch.nn.Module:
     """ Return a neural network (with random weights)
 
     :param arch: the architecture - should be in the ARCHITECTURES list above
     :param dataset: the dataset - should be in the datasets.DATASETS list
     :return: a Pytorch module
     """
+    print('arch', arch)
     if arch == "resnet50" and dataset == "imagenet":
         model = torch.nn.DataParallel(resnet50(pretrained=False)).cuda()
         cudnn.benchmark = True
@@ -33,7 +34,8 @@ def get_architecture(arch: str, dataset: str) -> torch.nn.Module:
     # give very similar results 
     # IF YOU USE ONE OF THESE FOR TRAINING, MAKE SURE
     # TO USE THE SAME WHEN CERTIFYING.
-    #normalize_layer = get_normalize_layer(dataset)
-    #print(normalize_layer)
-    normalize_layer = get_input_center_layer(dataset)
+    if normalize:
+        normalize_layer = get_normalize_layer(dataset)
+    else:
+        normalize_layer = get_input_center_layer(dataset)
     return torch.nn.Sequential(normalize_layer, model)

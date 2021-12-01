@@ -21,13 +21,14 @@ class PatchModel(nn.Module):
     """
     Patchwise smoothing
     """
-    def __init__(self, base_classifier, num_patches, patch_size, patch_stride=1, reduction='mean'):
+    def __init__(self, base_classifier, num_patches, patch_size, patch_stride=1, reduction='mean', num_classes=10):
         super().__init__()
         self.base_classifier = base_classifier
         self.patch_size = patch_size
         self.patch_stride = patch_stride
         self.reduction = reduction
         self.num_patches = num_patches
+        self.num_classes = num_classes
     
     def get_patches(self, x):
         # print('args2', self.patch_size, self.patch_stride)
@@ -63,7 +64,7 @@ class PatchModel(nn.Module):
         # t = (t - t.min())/t.ptp()
         # plt.imsave('./test.png', t)
         patches = self.get_patches(x)
-        outputs = torch.zeros((patches.shape[0], patches.shape[1], self.base_classifier.num_classes), dtype=x.dtype, device=x.device)
+        outputs = torch.zeros((patches.shape[0], patches.shape[1], self.num_classes), dtype=x.dtype, device=x.device)
         # get the output of each patch
         for i in range(patches.shape[0]):
             outputs[i] = self.base_classifier(patches[i, ...])

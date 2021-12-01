@@ -9,7 +9,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, datasets
 from torchvision.datasets.utils import check_integrity
 from typing import *
-from zipdata import ZipData
+from .zipdata import ZipData
 
 
 # set this environment variable to the location of your imagenet directory if you want to read ImageNet data.
