@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim import lr_scheduler
+from torchvision.datasets.folder import ImageFolder
 import numpy as np
 import torchvision
 from torchvision import datasets, models, transforms
@@ -121,6 +122,13 @@ def build_model(args, smooth=True, patchify=True, pretrained=True):
         config['input_size'] = (3, 256, 256)
         preprocess = PreprocessLayer(config)
         num_classes = 1000
+    elif args.dataset == 'imagenette':
+        base_model = create_model(args.mtype, pretrained=pretrained)
+        base_model.reset_classifier(num_classes=10)
+        config = resolve_data_config({}, model=base_model)
+        config['input_size'] = (3, 190, 190)
+        preprocess = PreprocessLayer(config)
+        num_classes = 10
     elif args.dataset == 'cifar10':
         base_model = get_architecture(args.mtype, args.dataset, normalize=True)
         num_classes = 10
@@ -207,6 +215,12 @@ def main_worker(gpus, n_gpus, args):
         cifar10_test = CIFAR10(root=args.dpath, train=False, download=True, transform=Compose([Resize((36,36)), ToTensor()]))
         train_dl = DataLoader(cifar10_train, batch_size=args.batch, shuffle=True, num_workers=args.workers)
         val_dl = DataLoader(cifar10_test, batch_size=args.batch,
+                            shuffle=False, num_workers=args.workers)
+    elif args.dataset == 'imagenette':
+        imagenette_train = ImageFolder(args.dpath / 'train', transform=Compose([Resize((256,256)), ToTensor()]))
+        imagenette_val = ImageFolder(args.dpath / 'val', transform=Compose([Resize((256,256)), ToTensor()]))
+        train_dl = DataLoader(imagenette_train, batch_size=args.batch, shuffle=True, num_workers=args.workers)
+        val_dl = DataLoader(imagenette_val, batch_size=args.batch,
                             shuffle=False, num_workers=args.workers)
     else:
         raise Exception('Unknown dataset!')
