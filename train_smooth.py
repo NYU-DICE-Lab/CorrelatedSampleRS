@@ -211,8 +211,11 @@ def main_worker(gpus, n_gpus, args):
         val_dl = DataLoader(imagenet_val, batch_size=args.batch,
                             shuffle=False, num_workers=args.workers)
     elif args.dataset == 'cifar10':
-        cifar10_train = CIFAR10(root=args.dpath, train=True, download=True, transform=Compose([Resize((36,36)), ToTensor()]))
-        cifar10_test = CIFAR10(root=args.dpath, train=False, download=True, transform=Compose([Resize((36,36)), ToTensor()]))
+        cifar10_train = CIFAR10(root=args.dpath, train=True, download=True, 
+                                transform=Compose([transforms.RandomCrop(32, padding=4),
+                                                    transforms.RandomHorizontalFlip(),
+                                                    transforms.ToTensor()]))
+        cifar10_test = CIFAR10(root=args.dpath, train=False, download=True, transform=Compose([ToTensor()]))
         train_dl = DataLoader(cifar10_train, batch_size=args.batch, shuffle=True, num_workers=args.workers)
         val_dl = DataLoader(cifar10_test, batch_size=args.batch,
                             shuffle=False, num_workers=args.workers)
@@ -277,6 +280,7 @@ def main_worker(gpus, n_gpus, args):
         else:
             print(f'{epoch}\t{after - before}\t{scheduler.get_lr()[0]}\t{train_loss}\t{test_loss}\t{train_acc}\t{test_acc}', file=outfile, flush=True)
         # if not args.parallel or (args.parallel and args.rank % ngpus == 0 ):
+        print("Saving at epoch: ", epoch+1)
         torch.save({
             'epoch': epoch + 1,
             'arch': args.mtype,

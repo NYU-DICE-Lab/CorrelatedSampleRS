@@ -1,0 +1,1 @@
+python3 train_smooth.py cifar10 -mt resnet50 -dpath /home/mnpham/Desktop --noise_sd 0.5
