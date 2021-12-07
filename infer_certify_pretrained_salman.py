@@ -119,7 +119,7 @@ if __name__ == '__main__':
     smooth_model.base_classifier.to(device)
 
     outfile = open(
-        outdir / f'output_{args.mtype}_{args.sigma}_{args.patch_size}_{args.patch_stride}.csv', 'w')
+        outdir / f'output_{args.mtype}_{args.sigma}_{args.patch_size}_{args.patch_stride}_{args.reduction_mode}.csv', 'w')
     print("idx\tlabel\tpredict\tradius\tcorrect\ttime", file=outfile, flush=True)
 
     for idx, (x, y) in enumerate(test_dl):
