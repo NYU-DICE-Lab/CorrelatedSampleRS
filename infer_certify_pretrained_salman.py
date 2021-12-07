@@ -60,6 +60,11 @@ def build_parser():
         action='store_true')
 
     parser.add_argument('--reduction_mode', '-rm', type=str, default='mean', choices=['mean', 'max', 'min'])
+    parser.add_argument('--normalize', action='store_true', help='True if you want to use NormalizeLayer, False if InputCenterLayer. Note:imagenet32/ --> NormalizeLayer \\
+        cifar10/finetune_cifar_from_imagenetPGD2steps/ --> NormalizeLayer \\
+        cifar10/self_training/ --> NormalizeLayer \\
+        imagenet/--> InputCenterLayer \\
+        cifar10/"everythingelse"/ --> InputCenterLayer ')
     return parser
 
 
@@ -106,7 +111,7 @@ if __name__ == '__main__':
     #smooth_model = build_model(
     #    args, smooth=True, patchify=args.patch, pretrained=True)
     model_data = torch.load(args.model_path)
-    base_model = get_architecture(model_data['arch'], dataset=args.dataset, normalize=True if args.dataset=='cifar10' else False)
+    base_model = get_architecture(model_data['arch'], dataset=args.dataset, normalize=args.normalize)
     base_model.load_state_dict(model_data['state_dict'])
     args.num_classes = 10 if args.dataset=='cifar10' or args.dataset=='imagenette' else 1000
     if args.patch:
