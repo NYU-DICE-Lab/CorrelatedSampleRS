@@ -24,13 +24,17 @@ from smoothadv.patch_model import PreprocessLayer
 from smoothadv.patch_model import PatchModel
 from smoothadv.architectures import *
 
+
 def build_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument('dataset', type=str, choices=['cifar10', 'imagenet', 'imagenette'])
+    parser.add_argument('dataset', type=str, choices=[
+                        'cifar10', 'imagenet', 'imagenette'])
     parser.add_argument(
         '-o', '--outdir', help='Output directory', default='results/')
-    parser.add_argument('-mp', '--model_path', help='Model path to load model', type=str, required=True)
-    parser.add_argument('-mt', '--mtype', help='Model type', choices=timm.list_models(pretrained=True).extend(['cifar_resnet110, cifar_resnet20']))
+    parser.add_argument('-mp', '--model_path',
+                        help='Model path to load model', type=str, required=True)
+    parser.add_argument('-mt', '--mtype', help='Model type', choices=timm.list_models(
+        pretrained=True).extend(['cifar_resnet110, cifar_resnet20']))
     parser.add_argument('-dpath', help='Data path',
                         default='/data/datasets/Imagenet/val')
     parser.add_argument('--gpu', help='gpu to use', default='0', type=str)
@@ -44,7 +48,8 @@ def build_parser():
                         help='Patch size', default=224, type=int)
     parser.add_argument('-pstr', '--patch_stride',
                         help='Patch Stride', default=1, type=int)
-    parser.add_argument('-np', '--num_patches',help='Maximum number of patches to consider for patch ensemble', type=int, default=10000)
+    parser.add_argument('-np', '--num_patches',
+                        help='Maximum number of patches to consider for patch ensemble', type=int, default=10000)
     parser.add_argument('-si', '--start_idx',
                         help='Start index for imagenet', default=0, type=int)
     parser.add_argument("--batch", type=int, default=1000, help="batch size")
@@ -56,27 +61,26 @@ def build_parser():
     parser.add_argument(
         '-sigma', '--sigma', help='Sigma for smoothing noise', default=0.1, type=float)
     parser.add_argument(
-        '-patch', '--patch', help='use patche-wise ensembling model (default smoothing without patches).', 
+        '-patch', '--patch', help='use patche-wise ensembling model (default smoothing without patches).',
         action='store_true')
 
-    parser.add_argument('--reduction_mode', '-rm', type=str, default='mean', choices=['mean', 'max', 'min'])
-    parser.add_argument('--normalize', action='store_true', help='True if you want to use NormalizeLayer, False if InputCenterLayer. Note:imagenet32/ --> NormalizeLayer \\
-        cifar10/finetune_cifar_from_imagenetPGD2steps/ --> NormalizeLayer \\
-        cifar10/self_training/ --> NormalizeLayer \\
-        imagenet/--> InputCenterLayer \\
-        cifar10/"everythingelse"/ --> InputCenterLayer ')
+    parser.add_argument('--reduction_mode', '-rm', type=str,
+                        default='mean', choices=['mean', 'max', 'min'])
+    parser.add_argument('--normalize', action='store_true', help='True if you want to use NormalizeLayer, False if InputCenterLayer. Note: imagenet32 / - -> NormalizeLayer \n cifar10/finetune_cifar_from_imagenetPGD2steps / - -> NormalizeLayer \n cifar10/self_training / - -> NormalizeLayer \n  imagenet/- -> InputCenterLayer \n cifar10/"everythingelse" / - -> InputCenterLayer ')
     return parser
 
 
 def build_model(args, smooth=True, patchify=True, pretrained=True):
     base_model = create_model(args.mtype, pretrained=pretrained)
     config = resolve_data_config({}, model=base_model)
-    config['input_size'] = (3,256 ,256) # Hardocoded to ensure additional patches for now.
+    # Hardocoded to ensure additional patches for now.
+    config['input_size'] = (3, 256, 256)
     preprocess = PreprocessLayer(config)
     if patchify:
         print('patchify')
         # print('args', args.patch_size, args.patch_stride)
-        base_model = PatchModel(base_model, num_patches=args.num_patches, patch_size = args.patch_size, patch_stride=args.patch_stride)
+        base_model = PatchModel(base_model, num_patches=args.num_patches,
+                                patch_size=args.patch_size, patch_stride=args.patch_stride)
     if smooth:
         model = Smooth(nn.Sequential(preprocess, base_model), num_classes=1000,
                        sigma=args.sigma)  # num classes hardocded for imagenet
@@ -105,21 +109,25 @@ if __name__ == '__main__':
             ImageNet(root=args.dpath, split='val', transform=ToTensor()), indices)
         test_dl = DataLoader(imagenet_val, batch_size=1)
     else:
-        test_dl = DataLoader(CIFAR10(root=args.dpath, train=False, download=True, transform=Compose([Resize((36,36)), ToTensor()])), shuffle=False, batch_size=1)
+        test_dl = DataLoader(CIFAR10(root=args.dpath, train=False, download=True, transform=Compose(
+            [Resize((36, 36)), ToTensor()])), shuffle=False, batch_size=1)
     # Load model
 
-    #smooth_model = build_model(
+    # smooth_model = build_model(
     #    args, smooth=True, patchify=args.patch, pretrained=True)
     model_data = torch.load(args.model_path)
-    base_model = get_architecture(model_data['arch'], dataset=args.dataset, normalize=args.normalize)
+    base_model = get_architecture(
+        model_data['arch'], dataset=args.dataset, normalize=args.normalize)
     base_model.load_state_dict(model_data['state_dict'])
-    args.num_classes = 10 if args.dataset=='cifar10' or args.dataset=='imagenette' else 1000
+    args.num_classes = 10 if args.dataset == 'cifar10' or args.dataset == 'imagenette' else 1000
     if args.patch:
         print('Creating a patch based model!')
-        base_model = PatchModel(base_model, num_patches=args.num_patches, patch_size = args.patch_size, patch_stride=args.patch_stride, reduction=args.reduction_mode)
+        base_model = PatchModel(base_model, num_patches=args.num_patches, patch_size=args.patch_size,
+                                patch_stride=args.patch_stride, reduction=args.reduction_mode)
     else:
         base_model = base_model
-    smooth_model = Smooth(base_model, num_classes=args.num_classes, sigma=args.sigma)
+    smooth_model = Smooth(
+        base_model, num_classes=args.num_classes, sigma=args.sigma)
     smooth_model.base_classifier.eval()
     smooth_model.base_classifier.to(device)
 
