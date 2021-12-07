@@ -105,7 +105,7 @@ if __name__ == '__main__':
             ImageNet(root=args.dpath, split='val', transform=ToTensor()), indices)
         test_dl = DataLoader(imagenet_val, batch_size=1)
     else:
-        test_dl = DataLoader(CIFAR10(root=args.dpath, train=False, transform=Compose([Resize((36,36)), ToTensor()])), shuffle=False, batch_size=1)
+        test_dl = DataLoader(CIFAR10(root=args.dpath, train=False, download=True, transform=Compose([Resize((36,36)), ToTensor()])), shuffle=False, batch_size=1)
     # Load model
 
     #smooth_model = build_model(
