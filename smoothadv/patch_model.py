@@ -64,12 +64,19 @@ class PatchModel(nn.Module):
         # t = (t - t.min())/t.ptp()
         # plt.imsave('./test.png', t)
         patches = self.get_patches(x)
+        #print(patches.shape)
         outputs = torch.zeros((patches.shape[0], patches.shape[1], self.num_classes), dtype=x.dtype, device=x.device)
         # get the output of each patch
         for i in range(patches.shape[0]):
             outputs[i] = self.base_classifier(patches[i, ...])
+        # print('outputs', outputs.shape)
         if self.reduction == 'mean':
             outputs = outputs.mean(dim=1)
+        elif self.reduction == 'max':
+            outputs = outputs.max(dim=1)[0]
+        elif self.reduction == 'min':
+            outputs = outputs.min(dim=1)[0]
+        # print('outputs2', outputs.shape)
         return outputs
 
 class PreprocessLayer(nn.Module):

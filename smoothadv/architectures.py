@@ -24,9 +24,9 @@ def get_architecture(arch: str, dataset: str, normalize: bool=False) -> torch.nn
     if arch == "resnet50" and dataset == "imagenet":
         model = torch.nn.DataParallel(resnet50(pretrained=False)).cuda()
         cudnn.benchmark = True
-    elif arch == "resnet20" and dataset=="cifar10":
+    elif arch == "cifar_resnet20" and dataset=="cifar10":
         model = resnet_cifar(depth=20, num_classes=10).cuda()
-    elif arch == "resnet110" and dataset=="cifar10":
+    elif arch == "cifar_resnet110" and dataset=="cifar10":
         model = resnet_cifar(depth=110, num_classes=10).cuda()
     elif arch == "imagenet32_resnet110":
         model = resnet_cifar(depth=110, num_classes=1000).cuda()
