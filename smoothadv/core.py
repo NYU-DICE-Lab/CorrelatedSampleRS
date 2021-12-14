@@ -44,6 +44,7 @@ class Smooth(object):
         # use these samples to estimate a lower bound on pA
         nA = counts_estimation[cAHat].item()
         pABar = self._lower_confidence_bound(nA, n, alpha)
+        #print('Smooth', pABar, cAHat)
         if pABar < 0.5:
             return Smooth.ABSTAIN, 0.0
         else:
@@ -81,6 +82,7 @@ class Smooth(object):
         :param batch_size:
         :return: an ndarray[int] of length num_classes containing the per-class counts
         """
+        #print(x.shape)
         with torch.no_grad():
             counts = np.zeros(self.num_classes, dtype=int)
             for _ in range(ceil(num / batch_size)):

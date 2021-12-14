@@ -132,6 +132,8 @@ if __name__ == '__main__':
     # smooth_model.base_classifier.to(device)
     smooth_model = PatchSmooth(base_model, num_patches=args.num_patches, patch_size=args.patch_size, patch_stride=args.patch_stride,
                                reduction=args.reduction_mode, num_classes=args.num_classes, sigma=args.sigma)
+    smooth_model.base_classifier.eval()
+    smooth_model.base_classifier.to(device)
     outfile = open(
         outdir / f'output_{args.mtype}_{args.sigma}_{args.patch_size}_{args.patch_stride}_{args.reduction_mode}.csv', 'w')
     print("idx\tlabel\tpredict\tradius\tcorrect\ttime", file=outfile, flush=True)
