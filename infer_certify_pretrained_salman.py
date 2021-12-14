@@ -63,7 +63,7 @@ def build_parser():
     parser.add_argument(
         '-patch', '--patch', help='use patche-wise ensembling model (default smoothing without patches).',
         action='store_true')
-
+    parser.add_argument('--new_size', '-ns', type=int, default=36, help='New size for getting patches.')
     parser.add_argument('--reduction_mode', '-rm', type=str,
                         default='mean', choices=['mean', 'max', 'min'])
     parser.add_argument('--normalize', action='store_true', help='True if you want to use NormalizeLayer, False if InputCenterLayer. Note: imagenet32 / - -> NormalizeLayer \n cifar10/finetune_cifar_from_imagenetPGD2steps / - -> NormalizeLayer \n cifar10/self_training / - -> NormalizeLayer \n  imagenet/- -> InputCenterLayer \n cifar10/"everythingelse" / - -> InputCenterLayer ')
@@ -110,7 +110,7 @@ if __name__ == '__main__':
         test_dl = DataLoader(imagenet_val, batch_size=1)
     else:
         test_dl = DataLoader(CIFAR10(root=args.dpath, train=False, download=True, transform=Compose(
-            [Resize((36, 36)), ToTensor()])), shuffle=False, batch_size=1)
+            [Resize((args.new_size, args.new_size)), ToTensor()])), shuffle=False, batch_size=1)
     # Load model
 
     # smooth_model = build_model(

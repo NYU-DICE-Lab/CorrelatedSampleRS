@@ -20,4 +20,4 @@ module purge
 singularity exec --nv \
 	--overlay /scratch/aaj458/singularity_containers/my_pytorch.ext3:ro \
 	/scratch/aaj458/singularity_containers/cuda11.1.1-cudnn8-devel-ubuntu20.04.sif \
-	/bin/bash -c "source /ext3/env.sh; python infer_certify_pretrained_salman.py cifar10 -dpath /scratch/aaj458/data/Cifar10/ -mt resnet110 -mp salman_models/pretrained_models/cifar10/PGD_2steps/eps_255/cifar10/resnet110/noise_0.50/checkpoint.pth.tar -ni 100 -ps $PATCH_SIZE -pstr $PATCH_STRIDE -sigma $SIGMA --N0 100 --N 10000 -o certify_results_salman_new_nopatch/ --batch 400 "
+	/bin/bash -c "source /ext3/env.sh; python infer_certify_pretrained_salman.py cifar10 -dpath /scratch/aaj458/data/Cifar10/ -mt resnet110 -mp salman_models/pretrained_models/cifar10/PGD_2steps/eps_255/cifar10/resnet110/noise_0.50/checkpoint.pth.tar -ni 100 -ps $PATCH_SIZE -pstr $PATCH_STRIDE -sigma $SIGMA --N0 100 --N 10000 -o certify_results_salman_new_nopatch_3232/ --batch 400 -ns 32"
