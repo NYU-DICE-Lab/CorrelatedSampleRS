@@ -275,7 +275,6 @@ class PatchSmooth(nn.Module):
             for _ in range(ceil(num / batch_size)):
                 this_batch_size = min(batch_size, num)
                 num -= this_batch_size
-
                 batch = x.repeat((this_batch_size, 1, 1, 1))
                 noise = torch.randn_like(batch, device='cuda') * self.sigma
                 predictions = self.base_classifier(batch + noise).argmax(1)
