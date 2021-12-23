@@ -2,28 +2,28 @@
 Patchwise smoothing
 """
 
+from math import ceil
+from statsmodels.stats.proportion import proportion_confint
+from scipy.stats import norm, binom_test
+from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD, DEFAULT_CROP_PCT
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import torchvision  
+import torchvision
 import torchvision.transforms as transforms
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 import math
 matplotlib.use('Agg')
-from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD, DEFAULT_CROP_PCT
-from scipy.stats import norm, binom_test
-from statsmodels.stats.proportion import proportion_confint
-from math import ceil
-
 
 
 class PatchModel(nn.Module):
     """
     Patchwise smoothing
     """
+
     def __init__(self, base_classifier, num_patches, patch_size, patch_stride=1, reduction='mean', num_classes=10):
         super().__init__()
         self.base_classifier = base_classifier
@@ -32,42 +32,45 @@ class PatchModel(nn.Module):
         self.reduction = reduction
         self.num_patches = num_patches
         self.num_classes = num_classes
-    
+
     def get_patches(self, x):
         # print('args2', self.patch_size, self.patch_stride)
         b, c, h, w = x.shape
         #print(b, c, h, w, self.patch_size, self.patch_stride)
         h2 = h//self.patch_stride
         w2 = w//self.patch_stride
-        pad_row = (h2 -1) * self.patch_stride + self.patch_size - h
-        pad_col = (w2 -1) * self.patch_stride + self.patch_size - w
+        pad_row = (h2 - 1) * self.patch_stride + self.patch_size - h
+        pad_col = (w2 - 1) * self.patch_stride + self.patch_size - w
         #print(pad_row, pad_col)
         #x = F.pad(x, (pad_row//2, pad_row - (pad_row//2), pad_col//2, pad_col - (pad_row//2)))
         #num_patches = (x.shape[2] // (self.patch_size - self.patch_stride)) * (x.shape[3] // (self.patch_size - self.patch_stride))
         #print(x.shape[2], x.shape[3])
         # get patches
         #print(x.shape, self.patch_stride, self.patch_size)
-        patches = x.unfold(2, self.patch_size, self.patch_stride).unfold(3, self.patch_size, self.patch_stride)
-        #print(patches.shape)
+        patches = x.unfold(2, self.patch_size, self.patch_stride).unfold(
+            3, self.patch_size, self.patch_stride)
+        # print(patches.shape)
         _, _, px, py, _, _ = patches.shape
         gen_num_patches = px * py
-        patches = patches.reshape(b, c, gen_num_patches, self.patch_size, self.patch_size)
+        patches = patches.reshape(
+            b, c, gen_num_patches, self.patch_size, self.patch_size)
         if gen_num_patches > self.num_patches:
             patches = patches[:, :, :self.num_patches, ...]
-        patches = patches.permute(0,2,1,3,4).contiguous()
+        patches = patches.permute(0, 2, 1, 3, 4).contiguous()
         # t = patches[4,35,...].detach().cpu().numpy().transpose(1,2,0)
         # t = (t - t.min())/t.ptp()
         # plt.imsave('./test11.png', t)
         # print(patches.shape)
         return patches
-    
+
     def forward(self, x):
         # print(x.shape)
         # t = x[4,...].detach().cpu().numpy().transpose(1,2,0)
         # t = (t - t.min())/t.ptp()
         # plt.imsave('./test.png', t)
         patches = self.get_patches(x)
-        outputs = torch.zeros((patches.shape[0], patches.shape[1], self.num_classes), dtype=x.dtype, device=x.device)
+        outputs = torch.zeros(
+            (patches.shape[0], patches.shape[1], self.num_classes), dtype=x.dtype, device=x.device)
         # get the output of each patch
         for i in range(patches.shape[0]):
             outputs[i] = self.base_classifier(patches[i, ...])
@@ -80,24 +83,27 @@ class PatchModel(nn.Module):
             outputs = outputs.min(dim=1)[0]
         return outputs
 
+
 class PreprocessLayer(nn.Module):
     """
     Apply transformations for base classifier.
     Supports mean, std, deviation, normalization,
     """
+
     def __init__(self, transforms):
         super().__init__()
         self.transforms = transforms
-        self.preprocess_layer = self.transforms_imagenet_eval(**self.transforms)
+        self.preprocess_layer = self.transforms_imagenet_eval(
+            **self.transforms)
 
     def transforms_imagenet_eval(
-        self,
-        input_size=224,
-        crop_pct=None,
-        interpolation='bilinear',
-        use_prefetcher=False,
-        mean=IMAGENET_DEFAULT_MEAN,
-        std=IMAGENET_DEFAULT_STD):
+            self,
+            input_size=224,
+            crop_pct=None,
+            interpolation='bilinear',
+            use_prefetcher=False,
+            mean=IMAGENET_DEFAULT_MEAN,
+            std=IMAGENET_DEFAULT_STD):
 
         # Since we assume that we are using a patch model, we will disregard cropping and resizing. The arguments exist to
         # maintain compatibility with timm classifiers.
@@ -110,7 +116,7 @@ class PreprocessLayer(nn.Module):
         if isinstance(img_size, (tuple, list)):
             assert len(img_size) == 2
             if img_size[-1] == img_size[-2]:
-            # fall-back to older behaviour so Resize scales to shortest edge if target is square
+                # fall-back to older behaviour so Resize scales to shortest edge if target is square
                 scale_size = int(math.floor(img_size[0] / crop_pct))
             else:
                 scale_size = tuple([int(x / crop_pct) for x in img_size])
@@ -118,8 +124,8 @@ class PreprocessLayer(nn.Module):
             scale_size = int(math.floor(img_size / crop_pct))
 
         tfl = [
-             transforms.Resize(scale_size, interpolation=0),
-             transforms.CenterCrop(img_size),
+            transforms.Resize(scale_size, interpolation=0),
+            transforms.CenterCrop(img_size),
         ]
         if use_prefetcher:
             # prefetcher and collate will handle tensor conversion and norm
@@ -127,8 +133,8 @@ class PreprocessLayer(nn.Module):
         else:
             tfl += [
                 transforms.Normalize(
-                         mean=torch.tensor(mean),
-                         std=torch.tensor(std))
+                    mean=torch.tensor(mean),
+                    std=torch.tensor(std))
             ]
 
         return nn.Sequential(*tfl)
@@ -136,7 +142,7 @@ class PreprocessLayer(nn.Module):
     def forward(self, x):
         return self.preprocess_layer(x)
 
-    
+
 class PatchSmooth(nn.Module):
     """
     Smooth the output of a patch classifier. (Uncorrelated noise)
@@ -158,13 +164,15 @@ class PatchSmooth(nn.Module):
         w2 = w//self.patch_stride
         # pad_row = (h2 -1) * self.patch_stride + self.patch_size - h
         # pad_col = (w2 -1) * self.patch_stride + self.patch_size - w
-        patches = x.unfold(2, self.patch_size, self.patch_stride).unfold(3, self.patch_size, self.patch_stride)
+        patches = x.unfold(2, self.patch_size, self.patch_stride).unfold(
+            3, self.patch_size, self.patch_stride)
         _, _, px, py, _, _ = patches.shape
         gen_num_patches = px * py
-        patches = patches.reshape(b, c, gen_num_patches, self.patch_size, self.patch_size)
+        patches = patches.reshape(
+            b, c, gen_num_patches, self.patch_size, self.patch_size)
         if gen_num_patches > self.num_patches:
             patches = patches[:, :, :self.num_patches, ...]
-        patches = patches.permute(0,2,1,3,4).contiguous()
+        patches = patches.permute(0, 2, 1, 3, 4).contiguous()
         return patches
 
     def forward(self, x):
@@ -190,22 +198,24 @@ class PatchSmooth(nn.Module):
         """
         # Get patches
         patches = self.get_patches(x)
-        #print(patches.shape)
-        counts_selection = np.zeros((patches.shape[1], self.num_classes)) # number of patches selected
-        probs = np.zeros(patches.shape[1]) # probability of each patch
-        cAhat_list = np.zeros(patches.shape[1]) 
+        # print(patches.shape)
+        # number of patches selected
+        counts_selection = np.zeros((patches.shape[1], self.num_classes))
+        probs = np.zeros(patches.shape[1])  # probability of each patch
+        cAhat_list = np.zeros(patches.shape[1])
         for i in range(patches.shape[1]):
             tmp = self._sample_noise(patches[0, i], n0, batch_size)
             #print('tmp', tmp.shape)
             counts_selection[i] = tmp
-            cAhat =  counts_selection[i].argmax().item()
-            counts_estimation = self._sample_noise(patches[0, i], n, batch_size)
+            cAhat = counts_selection[i].argmax().item()
+            counts_estimation = self._sample_noise(
+                patches[0, i], n, batch_size)
             nA = counts_estimation[cAhat].item()
             probs[i] = self._lower_confidence_bound(nA, n, alpha)
             cAhat_list[i] = cAhat
         #print('cAhat_list', cAhat_list)
         #print('probs', probs)
-        values, counts  = np.unique(cAhat_list, return_counts=True)
+        values, counts = np.unique(cAhat_list, return_counts=True)
         cAHat = values[np.argmax(counts)]
         pA = []
         for p, c in zip(probs, cAhat_list):
@@ -224,8 +234,8 @@ class PatchSmooth(nn.Module):
         else:
             radius = self.sigma * norm.ppf(pABar)
             return cAHat, radius
-        
-    def predict(self, x:torch.tensor, n: int, alpha: float, batch_size: int) -> (int, float):
+
+    def predict(self, x: torch.tensor, n: int, alpha: float, batch_size: int) -> (int, float):
         """
         Predict using patches
         """
@@ -237,7 +247,6 @@ class PatchSmooth(nn.Module):
 
         # for i in range(patches.shape[0]):
         #     pred[i],  = self.predict(patches[i], n, alpha, batch_size)
-        
 
     def predict(self, x: torch.tensor, n: int, alpha: float, batch_size: int) -> int:
         """ Monte Carlo algorithm for evaluating the prediction of g at x.  With probability at least 1 - alpha, the
@@ -278,7 +287,8 @@ class PatchSmooth(nn.Module):
                 batch = x.repeat((this_batch_size, 1, 1, 1))
                 noise = torch.randn_like(batch, device='cuda') * self.sigma
                 predictions = self.base_classifier(batch + noise).argmax(1)
-                counts += self._count_arr(predictions.cpu().numpy(), self.num_classes)
+                counts += self._count_arr(predictions.cpu().numpy(),
+                                          self.num_classes)
             return counts
 
     def _count_arr(self, arr: np.ndarray, length: int) -> np.ndarray:

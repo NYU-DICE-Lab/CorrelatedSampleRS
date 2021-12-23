@@ -96,7 +96,7 @@ def plot_certified_accuracy(outfile: str, title: str, max_radius: float,
     plt.tick_params(labelsize=14)
     plt.xlabel("radius", fontsize=16)
     plt.ylabel("certified accuracy", fontsize=16)
-    plt.legend([method.legend for method in lines if method.legend is not None], loc='lower left', bbox_to_anchor=(1.0, 0.5), fontsize=16)
+    plt.legend([method.legend for method in lines if method.legend is not None], loc='upper right', bbox_to_anchor=(1.0, 1.0), fontsize=16)
     plt.tight_layout()
     #plt.show()
     plt.savefig(outfile + ".pdf")
