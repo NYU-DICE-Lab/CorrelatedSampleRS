@@ -198,14 +198,16 @@ class PatchSmooth(nn.Module):
         """
         # Get patches
         patches = self.get_patches(x)
-        # print(patches.shape)
+        #print(patches.shape)
+        #import sys
+        #sys.exit()
         # number of patches selected
         counts_selection = np.zeros((patches.shape[1], self.num_classes))
         probs = np.zeros(patches.shape[1])  # probability of each patch
         cAhat_list = np.zeros(patches.shape[1])
         for i in range(patches.shape[1]):
             tmp = self._sample_noise(patches[0, i], n0, batch_size)
-            #print('tmp', tmp.shape)
+            # print('tmp', tmp.shape)
             counts_selection[i] = tmp
             cAhat = counts_selection[i].argmax().item()
             counts_estimation = self._sample_noise(

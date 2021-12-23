@@ -67,26 +67,27 @@ def build_parser():
     parser.add_argument('--reduction_mode', '-rm', type=str,
                         default='mean', choices=['mean', 'max', 'min'])
     parser.add_argument('--normalize', action='store_true', help='True if you want to use NormalizeLayer, False if InputCenterLayer. Note: imagenet32 / - -> NormalizeLayer \n cifar10/finetune_cifar_from_imagenetPGD2steps / - -> NormalizeLayer \n cifar10/self_training / - -> NormalizeLayer \n  imagenet/- -> InputCenterLayer \n cifar10/"everythingelse" / - -> InputCenterLayer ')
+    parser.add_argument('-ns', '--new_size', type=int, default=224)
     return parser
 
 
-def build_model(args, smooth=True, patchify=True, pretrained=True):
-    base_model = create_model(args.mtype, pretrained=pretrained)
-    config = resolve_data_config({}, model=base_model)
-    # Hardocoded to ensure additional patches for now.
-    config['input_size'] = (3, 256, 256)
-    preprocess = PreprocessLayer(config)
-    if patchify:
-        print('patchify')
-        # print('args', args.patch_size, args.patch_stride)
-        base_model = PatchModel(base_model, num_patches=args.num_patches,
-                                patch_size=args.patch_size, patch_stride=args.patch_stride)
-    if smooth:
-        model = Smooth(nn.Sequential(preprocess, base_model), num_classes=1000,
-                       sigma=args.sigma)  # num classes hardocded for imagenet
-    else:
-        model = base_model
-    return model
+# def build_model(args, smooth=True, patchify=True, pretrained=True):
+#     base_model = create_model(args.mtype, pretrained=pretrained)
+#     config = resolve_data_config({}, model=base_model)
+#     # Hardocoded to ensure additional patches for now.
+#     config['input_size'] = (3, 256, 256)
+#     preprocess = PreprocessLayer(config)
+#     if patchify:
+#         print('patchify')
+#         # print('args', args.patch_size, args.patch_stride)
+#         base_model = PatchModel(base_model, num_patches=args.num_patches,
+#                                 patch_size=args.patch_size, patch_stride=args.patch_stride)
+#     if smooth:
+#         model = Smooth(nn.Sequential(preprocess, base_model), num_classes=1000,
+#                        sigma=args.sigma)  # num classes hardocded for imagenet
+#     else:
+#         model = base_model
+#     return model
 
 
 if __name__ == '__main__':
@@ -110,7 +111,7 @@ if __name__ == '__main__':
         test_dl = DataLoader(imagenet_val, batch_size=1)
     else:
         test_dl = DataLoader(CIFAR10(root=args.dpath, train=False, download=True, transform=Compose(
-            [Resize((36, 36)), ToTensor()])), shuffle=False, batch_size=1)
+            [Resize((args.new_size, args.new_size)), ToTensor()])), shuffle=False, batch_size=1)
     # Load model
 
     # smooth_model = build_model(
@@ -120,16 +121,6 @@ if __name__ == '__main__':
         model_data['arch'], dataset=args.dataset, normalize=args.normalize)
     base_model.load_state_dict(model_data['state_dict'])
     args.num_classes = 10 if args.dataset == 'cifar10' or args.dataset == 'imagenette' else 1000
-    # if args.patch:
-    #     print('Creating a patch based model!')
-    #     base_model = PatchModel(base_model, num_patches=args.num_patches, patch_size=args.patch_size,
-    #                             patch_stride=args.patch_stride, reduction=args.reduction_mode)
-    # else:
-    #     base_model = base_model
-    # smooth_model = Smooth(
-    #     base_model, num_classes=args.num_classes, sigma=args.sigma)
-    # smooth_model.base_classifier.eval()
-    # smooth_model.base_classifier.to(device)
     smooth_model = PatchSmooth(base_model, num_patches=args.num_patches, patch_size=args.patch_size, patch_stride=args.patch_stride,
                                reduction=args.reduction_mode, num_classes=args.num_classes, sigma=args.sigma)
     smooth_model.base_classifier.eval()
