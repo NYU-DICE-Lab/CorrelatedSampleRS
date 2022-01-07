@@ -16,6 +16,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 import math
+from torch.nn import functional as F
 matplotlib.use('Agg')
 
 
@@ -202,40 +203,40 @@ class PatchSmooth(nn.Module):
         #import sys
         #sys.exit()
         # number of patches selected
-        counts_selection = np.zeros((patches.shape[1], self.num_classes))
-        probs = np.zeros(patches.shape[1])  # probability of each patch
-        cAhat_list = np.zeros(patches.shape[1])
-        for i in range(patches.shape[1]):
-            tmp = self._sample_noise(patches[0, i], n0, batch_size)
-            # print('tmp', tmp.shape)
-            counts_selection[i] = tmp
-            cAhat = counts_selection[i].argmax().item()
-            counts_estimation = self._sample_noise(
-                patches[0, i], n, batch_size)
-            nA = counts_estimation[cAhat].item()
-            probs[i] = self._lower_confidence_bound(nA, n, alpha)
-            cAhat_list[i] = cAhat
+        #counts_selection = np.zeros((patches.shape[1], self.num_classes))
+        #probs = np.zeros(patches.shape[1])  # probability of each patch
+        #cAhat_list = np.zeros(patches.shape[1])
+        #for i in range(patches.shape[1]):
+        tmp = self._sample_noise(patches[0], n0, batch_size)
+        # print('tmp', tmp.shape)
+        counts_selection = tmp
+        cAhat = counts_selection.argmax().item()
+        counts_estimation = self._sample_noise(patches[0], n, batch_size)
+        nA = counts_estimation[cAhat].item()
+        pABar = self._lower_confidence_bound(nA, n, alpha)
+        #probs[i] = self._lower_confidence_bound(nA, n, alpha)
+        #cAhat_list[i] = cAhat
         #print('cAhat_list', cAhat_list)
         #print('probs', probs)
-        values, counts = np.unique(cAhat_list, return_counts=True)
-        cAHat = values[np.argmax(counts)]
-        pA = []
-        for p, c in zip(probs, cAhat_list):
-            if c == cAHat:
-                pA.append(p)
-        pA = np.array(pA)
-        if self.reduction == 'mean':
-            pABar = np.mean(pA)
-        elif self.reduction == 'max':
-            pABar = np.max(pA)
-        elif self.reduction == 'min':
-            pABar = np.min(pA)
+        #values, counts = np.unique(cAhat_list, return_counts=True)
+        #cAHat = values[np.argmax(counts)]
+        #pA = []
+        #for p, c in zip(probs, cAhat_list):
+        #    if c == cAHat:
+        #        pA.append(p)
+        #pA = np.array(pA)
+        #if self.reduction == 'mean':
+        #    pABar = np.mean(pA)
+        #elif self.reduction == 'max':
+        #    pABar = np.max(pA)
+        #elif self.reduction == 'min':
+        #    pABar = np.min(pA)
         #print(cAHat, pABar)
         if pABar < 0.5:
             return -1, 0.0
         else:
             radius = self.sigma * norm.ppf(pABar)
-            return cAHat, radius
+            return cAhat, radius
 
     def predict(self, x: torch.tensor, n: int, alpha: float, batch_size: int) -> (int, float):
         """
@@ -276,19 +277,39 @@ class PatchSmooth(nn.Module):
     def _sample_noise(self, x: torch.tensor, num: int, batch_size) -> np.ndarray:
         """ Sample the base classifier's prediction under noisy corruptions of the input x.
 
-        :param x: the input [channel x width x height]
+        :param x: the input [patch x channel x width x height]
         :param num: number of samples to collect
         :param batch_size:
         :return: an ndarray[int] of length num_classes containing the per-class counts
         """
+        # print(x.shape)
+        # import sys
+        # sys.exit()
+        #print(x.shape)
         with torch.no_grad():
             counts = np.zeros(self.num_classes, dtype=int)
             for _ in range(ceil(num / batch_size)):
                 this_batch_size = min(batch_size, num)
                 num -= this_batch_size
-                batch = x.repeat((this_batch_size, 1, 1, 1))
+                #print(x.shape)
+                batch = x.unsqueeze(1).repeat((1, this_batch_size, 1, 1, 1))
                 noise = torch.randn_like(batch, device='cuda') * self.sigma
-                predictions = self.base_classifier(batch + noise).argmax(1)
+                batch = batch + noise
+                pn, c, ch, w, h = batch.shape
+                batch = batch.view(pn*c, ch,  w,  h)
+                predictions = F.softmax(self.base_classifier(batch), dim=-1)#.argmax(1)
+                predictions = predictions.view(pn, c, -1)
+               
+                #import sys
+                #sys.exit()
+                #pred_labels = predictions.argmax(1)
+                if self.reduction == 'max':
+                    pred_maxs = predictions.max(0)[0]
+                
+                predictions = pred_maxs.argmax(1)
+                #print(predictions.shape, pred_maxs.shape)
+                #import sys
+                #sys.exit()
                 counts += self._count_arr(predictions.cpu().numpy(),
                                           self.num_classes)
             return counts
