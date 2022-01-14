@@ -50,6 +50,7 @@ def build_parser():
                         help='Patch Stride', default=1, type=int)
     parser.add_argument('-np', '--num_patches',
                         help='Maximum number of patches to consider for patch ensemble', type=int, default=10000)
+    parser.add_argument('-rp', '--random_patches', help='Flag to use random patches instead of dense grid',action='store_true')
     parser.add_argument('-si', '--start_idx',
                         help='Start index for imagenet', default=0, type=int)
     parser.add_argument("--batch", type=int, default=1000, help="batch size")
@@ -122,7 +123,7 @@ if __name__ == '__main__':
     base_model.load_state_dict(model_data['state_dict'])
     args.num_classes = 10 if args.dataset == 'cifar10' or args.dataset == 'imagenette' else 1000
     smooth_model = PatchSmooth(base_model, num_patches=args.num_patches, patch_size=args.patch_size, patch_stride=args.patch_stride,
-                               reduction=args.reduction_mode, num_classes=args.num_classes, sigma=args.sigma)
+                               reduction=args.reduction_mode, num_classes=args.num_classes, sigma=args.sigma, random_patches=args.random_patches)
     smooth_model.base_classifier.eval()
     smooth_model.base_classifier.to(device)
     outfile = open(

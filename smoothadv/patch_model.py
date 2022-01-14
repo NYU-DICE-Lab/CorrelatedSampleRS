@@ -149,7 +149,7 @@ class PatchSmooth(nn.Module):
     Smooth the output of a patch classifier. (Uncorrelated noise)
     """
 
-    def __init__(self, base_classifier, num_patches, patch_size, patch_stride=1, reduction='mean', num_classes=10, sigma=0.12):
+    def __init__(self, base_classifier, num_patches, patch_size, patch_stride=1, reduction='mean', num_classes=10, sigma=0.12, random_patches=False):
         super().__init__()
         self.base_classifier = base_classifier
         self.num_patches = num_patches
@@ -158,22 +158,36 @@ class PatchSmooth(nn.Module):
         self.reduction = reduction
         self.num_classes = num_classes
         self.sigma = sigma
+        self.random_patches = random_patches
 
     def get_patches(self, x):
         b, c, h, w = x.shape
-        h2 = h//self.patch_stride
-        w2 = w//self.patch_stride
-        # pad_row = (h2 -1) * self.patch_stride + self.patch_size - h
-        # pad_col = (w2 -1) * self.patch_stride + self.patch_size - w
-        patches = x.unfold(2, self.patch_size, self.patch_stride).unfold(
-            3, self.patch_size, self.patch_stride)
-        _, _, px, py, _, _ = patches.shape
-        gen_num_patches = px * py
-        patches = patches.reshape(
-            b, c, gen_num_patches, self.patch_size, self.patch_size)
-        if gen_num_patches > self.num_patches:
-            patches = patches[:, :, :self.num_patches, ...]
-        patches = patches.permute(0, 2, 1, 3, 4).contiguous()
+        if not self.random_patches:
+            h2 = h//self.patch_stride
+            w2 = w//self.patch_stride
+            # pad_row = (h2 -1) * self.patch_stride + self.patch_size - h
+            # pad_col = (w2 -1) * self.patch_stride + self.patch_size - w
+            patches = x.unfold(2, self.patch_size, self.patch_stride).unfold(
+                3, self.patch_size, self.patch_stride)
+            _, _, px, py, _, _ = patches.shape
+            gen_num_patches = px * py
+            patches = patches.reshape(
+                b, c, gen_num_patches, self.patch_size, self.patch_size)
+            if gen_num_patches > self.num_patches:
+                patches = patches[:, :, :self.num_patches, ...]
+            patches = patches.permute(0, 2, 1, 3, 4).contiguous()
+        else:
+            """
+            Randomly sample patches from the image.
+            """
+            patches = torch.zeros(
+                (b, self.num_patches, c, self.patch_size, self.patch_size), dtype=x.dtype, device=x.device)
+            for i in range(b):
+                for j in range(self.num_patches):
+                    x_i = np.random.randint(0, h - self.patch_size)
+                    y_i = np.random.randint(0, w - self.patch_size)
+                    patches[i, j, ...] = x[i, ...][:, x_i:x_i +
+                                                      self.patch_size, y_i:y_i + self.patch_size]
         return patches
 
     def forward(self, x):
