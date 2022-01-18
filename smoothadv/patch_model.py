@@ -162,6 +162,7 @@ class PatchSmooth(nn.Module):
 
     def get_patches(self, x):
         b, c, h, w = x.shape
+        print(self.patch_stride)
         if not self.random_patches:
             h2 = h//self.patch_stride
             w2 = w//self.patch_stride
