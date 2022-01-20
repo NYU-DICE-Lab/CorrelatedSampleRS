@@ -20,6 +20,7 @@ from torch.nn import functional as F
 matplotlib.use('Agg')
 
 
+
 class PatchModel(nn.Module):
     """
     Patchwise smoothing
@@ -312,6 +313,175 @@ class PatchSmooth(nn.Module):
                 batch = batch + noise
                 pn, c, ch, w, h = batch.shape
                 batch = batch.view(pn*c, ch,  w,  h)
+                predictions = F.softmax(self.base_classifier(batch), dim=-1)#.argmax(1)
+                predictions = predictions.view(pn, c, -1)
+               
+                #import sys
+                #sys.exit()
+                #pred_labels = predictions.argmax(1)
+                if self.reduction == 'max':
+                    pred_maxs = predictions.max(0)[0]
+                
+                predictions = pred_maxs.argmax(1)
+                #print(predictions.shape, pred_maxs.shape)
+                #import sys
+                #sys.exit()
+                counts += self._count_arr(predictions.cpu().numpy(),
+                                          self.num_classes)
+            return counts
+
+    def _count_arr(self, arr: np.ndarray, length: int) -> np.ndarray:
+        counts = np.zeros(length, dtype=int)
+        for idx in arr:
+            counts[idx] += 1
+        return counts
+
+    def _lower_confidence_bound(self, NA: int, N: int, alpha: float) -> float:
+        """ Returns a (1 - alpha) lower confidence bound on a bernoulli proportion.
+
+        This function uses the Clopper-Pearson method.
+
+        :param NA: the number of "successes"
+        :param N: the number of total draws
+        :param alpha: the confidence level
+        :return: a lower bound on the binomial proportion which holds true w.p at least (1 - alpha) over the samples
+        """
+        return proportion_confint(NA, N, alpha=2 * alpha, method="beta")[0]
+
+
+class VideoPatchSmooth(nn.Module):
+    """
+    Smooth the output of a video classifier where we use chunks as the input.
+    Smooth classifier of the form \E_{z \sim N(0, \sigma^2 I)} [max_i f(x_i+z)]
+    x_i is a chunk of the video.
+    """
+
+    def __init__(self, base_classifier, num_chunks, chunk_size, chunk_stride=1, reduction='mean', num_classes=10, sigma=0.12, random_patches=False):
+        super().__init__()
+        self.base_classifier = base_classifier
+        self.num_chunks = num_chunks
+        self.chunk_size = chunk_size
+        self.chunk_stride = chunk_stride
+        self.reduction = reduction
+        self.num_classes = num_classes
+        self.sigma = sigma
+        self.random_patches = random_patches
+
+    def get_chunks(self, x):
+        b, c, f,  h, w = x.shape
+        #print('x.shape', x.shape)
+        #print(self.patch_stride)
+        if not self.random_patches:
+            chunks = x.unfold(2, self.chunk_size, self.chunk_stride).permute(0, 1, 5, 2, 3, 4).contiguous() 
+            #b, num_chunks, chunksize, ch, frame_wd, frame_ht
+            gen_num_chunks = chunks.shape[1] #
+            #patches = patches.reshape(
+            #    b, c, gen_num_patches, self.patch_size, self.patch_size)
+            if gen_num_chunks > self.num_chunks:
+                chunks = chunks[:, :self.num_patches, ...]
+        else:
+            """
+            Randomly sample patches from the image.
+            """
+            chunks = torch.zeros(
+                (b, self.num_chunks, c, self.chunk_size, h, w), dtype=x.dtype, device=x.device)
+            #print('chunks_shape',chunks.shape)
+            for i in range(b):
+                for j in range(self.num_chunks):
+                    f_i = np.random.randint(0, f - self.chunk_size)
+                    #print(chunks[i,j,...].shape, x[i, ...][:, f_i:f_i+self.chunk_size,...].shape)
+                    chunks[i, j, ...] = x[i, ...][:, f_i:f_i + self.chunk_size,...]
+        return chunks
+
+    def forward(self, x):
+        patches = self.get_patches(x)
+        outputs = self.base_classifier(patches)
+        if self.reduction == 'mean':
+            outputs = outputs.mean(dim=1)
+        elif self.reduction == 'max':
+            outputs = outputs.max(dim=1)[0]
+        elif self.reduction == 'min':
+            outputs = outputs.min(dim=1)[0]
+        return outputs
+
+    def certify(self, x: torch.tensor, n0: int, n: int, alpha: float, batch_size: int) -> (int, float):
+        """
+        Certify the number of patches and the size of the patches.
+        :param x: Input video
+        :param n0: Initial number of patches
+        :param n: Final number of patches
+        :param alpha: Accuracy of the number of patches
+        :param batch_size: Batch size
+        :return: (n, sigma)
+        """
+        # Get patches
+        chunks = self.get_chunks(x)
+        counts_selection = self._sample_noise(chunks[0], n0, batch_size)
+        cAhat = counts_selection.argmax().item()
+        counts_estimation = self._sample_noise(chunks[0], n, batch_size)
+        nA = counts_estimation[cAhat].item()
+        pABar = self._lower_confidence_bound(nA, n, alpha)
+        if pABar < 0.5:
+            return -1, 0.0
+        else:
+            radius = self.sigma * norm.ppf(pABar)
+            return cAhat, radius
+
+    def predict(self, x: torch.tensor, n: int, alpha: float, batch_size: int) -> (int, float):
+        """
+        Predict using patches
+        """
+        raise Exception("Not implemented")
+
+
+    # def predict(self, x: torch.tensor, n: int, alpha: float, batch_size: int) -> int:
+    #     """ Monte Carlo algorithm for evaluating the prediction of g at x.  With probability at least 1 - alpha, the
+    #     class returned by this method will equal g(x).
+
+    #     This function uses the hypothesis test described in https://arxiv.org/abs/1610.03944
+    #     for identifying the top category of a multinomial distribution.
+
+    #     :param x: the input [channel x height x width]
+    #     :param n: the number of Monte Carlo samples to use
+    #     :param alpha: the failure probability
+    #     :param batch_size: batch size to use when evaluating the base classifier
+    #     :return: the predicted class, or ABSTAIN
+    #     """
+    #     self.base_classifier.eval()
+    #     counts = self._sample_noise(x, n, batch_size)
+    #     top2 = counts.argsort()[::-1][:2]
+    #     count1 = counts[top2[0]]
+    #     count2 = counts[top2[1]]
+    #     if binom_test(count1, count1 + count2, p=0.5) > alpha:
+    #         return Smooth.ABSTAIN, count1, count2
+    #     else:
+    #         return top2[0], count1, count2
+
+    def _sample_noise(self, x: torch.tensor, num: int, batch_size) -> np.ndarray:
+        """ Sample the base classifier's prediction under noisy corruptions of the input x.
+
+        :param x: the input [chunks x frame x channel x width x height]
+        :param num: number of samples to collect
+        :param batch_size:
+        :return: an ndarray[int] of length num_classes containing the per-class counts
+        """
+        #print(x.shape)
+        #import sys
+        #sys.exit()
+        #print(x.shape)
+        with torch.no_grad():
+            counts = np.zeros(self.num_classes, dtype=int)
+            for _ in range(ceil(num / batch_size)):
+                this_batch_size = min(batch_size, num)
+                num -= this_batch_size
+                #print(x.shape)
+                batch = x.unsqueeze(1).repeat((1, this_batch_size, 1, 1, 1, 1))
+                #print(batch.shape)
+                noise = torch.randn_like(batch, device='cuda') * self.sigma
+                batch = batch + noise
+                pn, c, ch, f, w, h = batch.shape
+                batch = batch.view(pn*c, ch, f,  w,  h)
+                #print(batch.shape)
                 predictions = F.softmax(self.base_classifier(batch), dim=-1)#.argmax(1)
                 predictions = predictions.view(pn, c, -1)
                
