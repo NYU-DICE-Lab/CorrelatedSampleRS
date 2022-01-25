@@ -516,3 +516,24 @@ class VideoPatchSmooth(nn.Module):
         :return: a lower bound on the binomial proportion which holds true w.p at least (1 - alpha) over the samples
         """
         return proportion_confint(NA, N, alpha=2 * alpha, method="beta")[0]
+
+
+class VideoEnsembleModel(n.Module):
+    """
+    Takes as input a subvideo (64 frames/128 frames)
+    Outputs the average of logits predicted for each 16 frame chunk
+    """
+
+    def __init__(self, base_classifier, chunk_size=16, chunk_stride==16):
+        super().__init__()
+        self.base_classifier = base_classifier
+        self.chunk_size = chunk_size
+        self.chunk_stride = chunk_stride
+
+    def forward(self, x):
+        chunks = x.unfold(1, self.chunk_size, self.chunk_stride).squeeze(0)
+        logits = self.base_classifier(chunks)
+        #logits = logits.view(chunks.size(0), self.chunk_size, -1)
+        logits = logits.mean(0)
+        print(logits.shape)
+        return logits

@@ -17,7 +17,7 @@ from torchvision.datasets import CIFAR10, ImageNet
 from torchvision.transforms.transforms import ToTensor, Resize, Compose
 
 from smoothadv.core import Smooth
-from smoothadv.patch_model import VideoPatchSmooth
+from smoothadv.patch_model import VideoEnsembleModel, VideoPatchSmooth
 from smoothadv.videomodels.model import model_wrapper, generate_model
 from smoothadv.videodataset.dataset import UCF101_test
 from smoothadv.video_opts import parse_opts
@@ -45,9 +45,9 @@ def build_parser():
                         help='Chunk size', default=16, type=int)
     parser.add_argument('-cstr', '--chunk_stride',
                         help='chunk stride', default=1, type=int)
-    parser.add_argument('-np', '--num_chunks',
-                        help='Maximum number of chunks to consider for patch ensemble', type=int, default=10000)
-    parser.add_argument('-rp', '--random_patches', help='Flag to use random patches instead of dense grid',action='store_true')
+    parser.add_argument('-ns', '--num_subvideos',
+                        help='Maximum number of subvideos to consider for patch ensemble', type=int, default=10000)
+    parser.add_argument('-rs', '--random_subvideos', help='Flag to use random subvideos instead of dense grid',action='store_true')
     parser.add_argument('-si', '--start_idx',
                         help='Start index for imagenet', default=0, type=int)
     parser.add_argument("--batch", type=int, default=1000, help="batch size")
@@ -58,7 +58,8 @@ def build_parser():
                         help="failure probability")
     parser.add_argument(
         '-sigma', '--sigma', help='Sigma for smoothing noise', default=0.1, type=float)
-
+    parser.add_argument('--subvideo_size','-svs', help='Subvideo size', default=64, type=int)
+    parser.add_argument('--subvideo_stride','-svstr', help='Subvideo stride', default=16, type=int)
     parser.add_argument('--reduction_mode', '-rm', type=str,
                         default='mean', choices=['mean', 'max', 'min'])
    # parser.add_argument('--normalize', action='store_true', help='True if you want to use NormalizeLayer, False if InputCenterLayer. Note: imagenet32 / - -> NormalizeLayer \n cifar10/finetune_cifar_from_imagenetPGD2steps / - -> NormalizeLayer \n cifar10/self_training / - -> NormalizeLayer \n  imagenet/- -> InputCenterLayer \n cifar10/"everythingelse" / - -> InputCenterLayer ')
@@ -180,16 +181,7 @@ if __name__ == '__main__':
     else:
         print('Unsupported dataset!')
     test_dl = DataLoader(ds, batch_size=1, shuffle=False, num_workers=args.n_workers)
-    # if args.dataset == 'imagenet':
-    #     indices = np.load('imagenet_indices.npy')
-    #     imagenet_val = Subset(
-    #         ImageNet(root=args.dpath, split='val', transform=ToTensor()), indices)
-    #     test_dl = DataLoader(imagenet_val, batch_size=1)
-    # else:
-    #     test_dl = DataLoader(CIFAR10(root=args.dpath, train=False, download=True, transform=Compose(
-    #         [Resize((args.new_size, args.new_size)), ToTensor()])), shuffle=False, batch_size=1)
 
-    #print(args.dataset)
     args.num_classes = 101 
     # for the generate_model function here, we use chunk size to create the model rather than sample duration.
     # Unlike the original script, we use sample duration to mean 
@@ -201,19 +193,11 @@ if __name__ == '__main__':
     model.load_state_dict(sd)
     #model.to(device)
     #model.eval()
+    video_submodel = VideoEnsembleModel(model, args.chunk_size, args.chunk_stride)
 
     #Create smooth model
-    smooth_model = VideoPatchSmooth(model, args.num_chunks, args.chunk_size, args.chunk_stride, args.reduction_mode, args.num_classes, args.sigma, args.random_patches)    
-
-    # smooth_model = build_model(
-    #    args, smooth=True, patchify=args.patch, pretrained=True)
-    # model_data = torch.load(args.model_path)
-    # base_model = get_architecture(
-    #     model_data['arch'], dataset=args.dataset, normalize=args.normalize)
-    # base_model.load_state_dict(model_data['state_dict'])
-    # smooth_model = PatchSmooth(base_model, num_patches=args.num_patches, patch_size=args.patch_size, patch_stride=args.patch_stride,
-    #                            reduction=args.reduction_mode, num_classes=args.num_classes, sigma=args.sigma, random_patches=args.random_patches)
-    # smooth_model.base_classifier.eval()
+    smooth_model = VideoPatchSmooth(video_submodel, args.num_subvideos, args.subvideo_size, args.subvideo_stride, args.reduction_mode, args.num_classes, args.sigma, args.random_patches)    
+    smooth_model.base_classifier.eval()
     smooth_model.base_classifier.to(device)
     outfile = open(
          outdir / f'output_{model_dict["arch"]}_{args.sigma}_{args.chunk_size}_{args.chunk_stride}_{args.reduction_mode}.csv', 'w')
