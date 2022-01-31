@@ -57,6 +57,7 @@ class NormalizeLayer(torch.nn.Module):
     def forward(self, input: torch.tensor):
         (batch_size, num_channels, sample_duration, height, width) = input.shape
         self.means = self.means.to(input.device)
+        #print('in normalize',input.shape, self.means, self.sds)
         self.sds = self.sds.to(input.device)
         means = self.means.repeat((batch_size, sample_duration, height, width, 1)).permute(0, 4, 1, 2, 3)
         sds = self.sds.repeat((batch_size, sample_duration, height, width, 1)).permute(0, 4, 1, 2, 3)
@@ -65,6 +66,7 @@ class NormalizeLayer(torch.nn.Module):
 def model_wrapper(model, opt):
     if opt.normalize_layer:
         if opt.dataset == "UCF101":
+            print('using ucf101 test normalization')
             means = get_mean(opt.dataset)
             sds = get_std(opt.dataset)
             model = nn.Sequential(NormalizeLayer(means=means, sds=sds), model)

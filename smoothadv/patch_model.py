@@ -356,42 +356,44 @@ class VideoPatchSmooth(nn.Module):
     x_i is a chunk of the video.
     """
 
-    def __init__(self, base_classifier, num_chunks, chunk_size, chunk_stride=1, reduction='mean', num_classes=10, sigma=0.12, random_patches=False):
+    def __init__(self, base_classifier, num_subvideos, subvideo_size, subvideo_stride, reduction='mean', num_classes=10, sigma=0.12, random_patches=False):
         super().__init__()
         self.base_classifier = base_classifier
-        self.num_chunks = num_chunks
-        self.chunk_size = chunk_size
-        self.chunk_stride = chunk_stride
+        self.num_subvids = num_subvideos
+        self.subvideo_size = subvideo_size
+        self.subvideo_stride = subvideo_stride
+        #self.chunk_size = chunk_size
+        #self.chunk_stride = chunk_stride
         self.reduction = reduction
         self.num_classes = num_classes
         self.sigma = sigma
         self.random_patches = random_patches
 
-    def get_chunks(self, x):
-        b, c, f,  h, w = x.shape
+    def get_subvideos(self, x):
+        b, c, f, h, w = x.shape
         #print('x.shape', x.shape)
         #print(self.patch_stride)
         if not self.random_patches:
-            chunks = x.unfold(2, self.chunk_size, self.chunk_stride).permute(0, 1, 5, 2, 3, 4).contiguous() 
+            subvids = x.unfold(2, self.subvideo_size, self.subvideo_stride).permute(0, 1, 5, 2, 3, 4).contiguous() 
             #b, num_chunks, chunksize, ch, frame_wd, frame_ht
-            gen_num_chunks = chunks.shape[1] #
+            gen_num_subvideos = subvids.shape[1] #
             #patches = patches.reshape(
             #    b, c, gen_num_patches, self.patch_size, self.patch_size)
-            if gen_num_chunks > self.num_chunks:
-                chunks = chunks[:, :self.num_patches, ...]
+            if gen_num_subvideos > self.num_subvids:
+                subvids = subvids[:, :self.num_subvids, ...]
         else:
             """
             Randomly sample patches from the image.
             """
-            chunks = torch.zeros(
-                (b, self.num_chunks, c, self.chunk_size, h, w), dtype=x.dtype, device=x.device)
+            subvids = torch.zeros(
+                (b, self.num_subvids, c, self.subvideo_size, h, w), dtype=x.dtype, device=x.device)
             #print('chunks_shape',chunks.shape)
             for i in range(b):
-                for j in range(self.num_chunks):
-                    f_i = np.random.randint(0, f - self.chunk_size)
+                for j in range(self.num_subvids):
+                    f_i = np.random.randint(0, f - self.subvideo_size)
                     #print(chunks[i,j,...].shape, x[i, ...][:, f_i:f_i+self.chunk_size,...].shape)
-                    chunks[i, j, ...] = x[i, ...][:, f_i:f_i + self.chunk_size,...]
-        return chunks
+                    subvids[i, j, ...] = x[i, ...][:, f_i:f_i + self.subvideo_size,...]
+        return subvids
 
     def forward(self, x):
         patches = self.get_patches(x)
@@ -415,7 +417,9 @@ class VideoPatchSmooth(nn.Module):
         :return: (n, sigma)
         """
         # Get patches
-        chunks = self.get_chunks(x)
+        #print('input size', x.shape)
+        chunks = self.get_subvideos(x)
+        #print('chunk_size', chunks.shape)
         counts_selection = self._sample_noise(chunks[0], n0, batch_size)
         cAhat = counts_selection.argmax().item()
         counts_estimation = self._sample_noise(chunks[0], n, batch_size)
@@ -465,7 +469,7 @@ class VideoPatchSmooth(nn.Module):
         :param batch_size:
         :return: an ndarray[int] of length num_classes containing the per-class counts
         """
-        #print(x.shape)
+        #print('certify input',x.shape)
         #import sys
         #sys.exit()
         #print(x.shape)
@@ -476,7 +480,7 @@ class VideoPatchSmooth(nn.Module):
                 num -= this_batch_size
                 #print(x.shape)
                 batch = x.unsqueeze(1).repeat((1, this_batch_size, 1, 1, 1, 1))
-                #print(batch.shape)
+                #print('certify batch',batch.shape)
                 noise = torch.randn_like(batch, device='cuda') * self.sigma
                 batch = batch + noise
                 pn, c, ch, f, w, h = batch.shape
@@ -484,19 +488,23 @@ class VideoPatchSmooth(nn.Module):
                 #print(batch.shape)
                 predictions = F.softmax(self.base_classifier(batch), dim=-1)#.argmax(1)
                 predictions = predictions.view(pn, c, -1)
+                #print('in certify',predictions.shape)
                
                 #import sys
                 #sys.exit()
                 #pred_labels = predictions.argmax(1)
                 if self.reduction == 'max':
                     pred_maxs = predictions.max(0)[0]
-                
+                #print('in certify2', pred_maxs.shape)
                 predictions = pred_maxs.argmax(1)
+                #print(predictions.shape)
+                #print(predictions)
                 #print(predictions.shape, pred_maxs.shape)
                 #import sys
                 #sys.exit()
                 counts += self._count_arr(predictions.cpu().numpy(),
                                           self.num_classes)
+            #print(counts)
             return counts
 
     def _count_arr(self, arr: np.ndarray, length: int) -> np.ndarray:
@@ -518,22 +526,35 @@ class VideoPatchSmooth(nn.Module):
         return proportion_confint(NA, N, alpha=2 * alpha, method="beta")[0]
 
 
-class VideoEnsembleModel(n.Module):
+class VideoEnsembleModel(nn.Module):
     """
     Takes as input a subvideo (64 frames/128 frames)
     Outputs the average of logits predicted for each 16 frame chunk
     """
 
-    def __init__(self, base_classifier, chunk_size=16, chunk_stride==16):
+    def __init__(self, base_classifier, chunk_size=16, chunk_stride=16):
         super().__init__()
         self.base_classifier = base_classifier
         self.chunk_size = chunk_size
         self.chunk_stride = chunk_stride
 
     def forward(self, x):
-        chunks = x.unfold(1, self.chunk_size, self.chunk_stride).squeeze(0)
+        #print('in ensemble',x.shape)
+        #import sys
+        #sys.exit()
+        #print(x.shape)
+        chunks = x.unfold(2, self.chunk_size, self.chunk_stride).permute(0, 2, 1, 5, 3, 4)
+        #print('in ensembel chunk ',chunks.shape)
+        bs, cnum, ch, f, w, h = chunks.shape
+        chunks = chunks.reshape(bs*cnum, ch, f, w, h)
+        #print('in ensembel chunk 2',chunks.shape)
         logits = self.base_classifier(chunks)
+        #print('in ensembel logits',logits.shape)
+        logits = logits.reshape(bs, cnum, -1)
+        #print('in ensembel logits2 ',logits.shape)
         #logits = logits.view(chunks.size(0), self.chunk_size, -1)
-        logits = logits.mean(0)
-        print(logits.shape)
+        #print(logits.shape)
+        logits = logits.mean(1)
+        #print(logits.argmax(-1), logits.mean(1))
+        #print(logits.shape)
         return logits

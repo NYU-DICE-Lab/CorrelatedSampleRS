@@ -39,12 +39,10 @@ def build_parser():
         '-it', '--iter', help='No. of iterations', type=int, default=40)
     parser.add_argument('-ni', '--num_images',
                         help='Number of images to be tested', default=100, type=int)
-    parser.add_argument(
-        '-clip', '--clip', help='Clip perturbations to original image intensities', action='store_true')
     parser.add_argument('-cs', '--chunk_size',
                         help='Chunk size', default=16, type=int)
     parser.add_argument('-cstr', '--chunk_stride',
-                        help='chunk stride', default=1, type=int)
+                        help='chunk stride', default=16, type=int)
     parser.add_argument('-ns', '--num_subvideos',
                         help='Maximum number of subvideos to consider for patch ensemble', type=int, default=10000)
     parser.add_argument('-rs', '--random_subvideos', help='Flag to use random subvideos instead of dense grid',action='store_true')
@@ -192,11 +190,11 @@ if __name__ == '__main__':
     #print(sd.keys())
     model.load_state_dict(sd)
     #model.to(device)
-    #model.eval()
+    model.eval()
     video_submodel = VideoEnsembleModel(model, args.chunk_size, args.chunk_stride)
-
+    video_submodel.eval()
     #Create smooth model
-    smooth_model = VideoPatchSmooth(video_submodel, args.num_subvideos, args.subvideo_size, args.subvideo_stride, args.reduction_mode, args.num_classes, args.sigma, args.random_patches)    
+    smooth_model = VideoPatchSmooth(video_submodel, args.num_subvideos, args.subvideo_size, args.subvideo_stride, args.reduction_mode, args.num_classes, args.sigma, args.random_subvideos)    
     smooth_model.base_classifier.eval()
     smooth_model.base_classifier.to(device)
     outfile = open(
