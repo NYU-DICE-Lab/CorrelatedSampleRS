@@ -17,7 +17,7 @@ from torchvision.datasets import CIFAR10, ImageNet
 from torchvision.transforms.transforms import ToTensor, Resize, Compose
 
 from smoothadv.core import Smooth
-from smoothadv.patch_model import VideoEnsembleModel, VideoPatchSmooth
+from smoothadv.patch_model import VideoEnsembleModel, VideoPatchSmooth, BaseVideoRandomizedSmooth
 from smoothadv.videomodels.model import model_wrapper, generate_model
 from smoothadv.videodataset.dataset import UCF101_test
 from smoothadv.video_opts import parse_opts
@@ -156,6 +156,8 @@ def build_parser():
         default=1,
         type=int,
         help='use normalize layer')
+
+    parser.add_sargument('--basers', action='store_true', help='True if you want to use base Randomized smoothing, False if not')
     return parser
 
 if __name__ == '__main__':
@@ -194,7 +196,11 @@ if __name__ == '__main__':
     video_submodel = VideoEnsembleModel(model, args.chunk_size, args.chunk_stride)
     video_submodel.eval()
     #Create smooth model
-    smooth_model = VideoPatchSmooth(video_submodel, args.num_subvideos, args.subvideo_size, args.subvideo_stride, args.reduction_mode, args.num_classes, args.sigma, args.random_subvideos)    
+    if args.basers:
+        smooth_model = BaseVideoRandomizedSmooth(video_submodel, args.num_classes, args.sigma)
+    else:
+        smooth_model = VideoPatchSmooth(video_submodel, args.num_subvideos, args.subvideo_size, args.subvideo_stride, args.reduction_mode, args.num_classes, args.sigma, args.random_subvideos)    
+    
     smooth_model.base_classifier.eval()
     smooth_model.base_classifier.to(device)
     outfile = open(
