@@ -321,6 +321,8 @@ class PatchSmooth(nn.Module):
                 #pred_labels = predictions.argmax(1)
                 if self.reduction == 'max':
                     pred_maxs = predictions.max(0)[0]
+                elif self.reduction == 'mean':
+                    pred_maxs = predictions.mean(0)
                 
                 predictions = pred_maxs.argmax(1)
                 #print(predictions.shape, pred_maxs.shape)
