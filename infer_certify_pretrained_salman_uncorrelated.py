@@ -138,6 +138,7 @@ if __name__ == '__main__':
             break
         x = x.to(device)
         y = y.to(device)
+       # print(x.shape)
         # Certify
         tic = perf_counter()
         prediction, radius = smooth_model.certify(
