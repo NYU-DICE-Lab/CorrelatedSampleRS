@@ -311,10 +311,15 @@ class PatchSmooth(nn.Module):
                 batch = x.unsqueeze(1).repeat((1, this_batch_size, 1, 1, 1))
                 noise = torch.randn_like(batch, device='cuda') * self.sigma
                 batch = batch + noise
+                #print('in certify1',batch.shape)
                 pn, c, ch, w, h = batch.shape
+
                 batch = batch.view(pn*c, ch,  w,  h)
+                #print('in certify2', batch.shape)
                 predictions = F.softmax(self.base_classifier(batch), dim=-1)#.argmax(1)
+                #print('in ceritfy3', predictions.shape)
                 predictions = predictions.view(pn, c, -1)
+                #print('in certify4', predictions.shape)
                
                 #import sys
                 #sys.exit()
@@ -323,13 +328,15 @@ class PatchSmooth(nn.Module):
                     pred_maxs = predictions.max(0)[0]
                 elif self.reduction == 'mean':
                     pred_maxs = predictions.mean(0)
-                
+                #print('in certify5', pred_maxs.shape)
                 predictions = pred_maxs.argmax(1)
+               # print('in certify6',predictions.shape)
                 #print(predictions.shape, pred_maxs.shape)
                 #import sys
                 #sys.exit()
                 counts += self._count_arr(predictions.cpu().numpy(),
                                           self.num_classes)
+            print(counts)
             return counts
 
     def _count_arr(self, arr: np.ndarray, length: int) -> np.ndarray:
@@ -497,6 +504,8 @@ class VideoPatchSmooth(nn.Module):
                 #pred_labels = predictions.argmax(1)
                 if self.reduction == 'max':
                     pred_maxs = predictions.max(0)[0]
+                if self.reduction == 'mean':
+                    pred_maxs = predictions.mean(0)
                 #print('in certify2', pred_maxs.shape)
                 predictions = pred_maxs.argmax(1)
                 #print(predictions.shape)
