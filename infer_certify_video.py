@@ -157,7 +157,7 @@ def build_parser():
         type=int,
         help='use normalize layer')
 
-    parser.add_sargument('--basers', action='store_true', help='True if you want to use base Randomized smoothing, False if not')
+    parser.add_argument('--basers', action='store_true', help='True if you want to use base Randomized smoothing, False if not')
     return parser
 
 if __name__ == '__main__':
@@ -181,7 +181,7 @@ if __name__ == '__main__':
     else:
         print('Unsupported dataset!')
     test_dl = DataLoader(ds, batch_size=1, shuffle=False, num_workers=args.n_workers)
-
+    print("Length of test_dl: ", len(test_dl))
     args.num_classes = 101 
     # for the generate_model function here, we use chunk size to create the model rather than sample duration.
     # Unlike the original script, we use sample duration to mean 
@@ -189,9 +189,8 @@ if __name__ == '__main__':
     model = model_wrapper(model, args)
     model_dict = torch.load(args.model_path)
     sd = model_dict['state_dict']
-    #print(sd.keys())
     model.load_state_dict(sd)
-    #model.to(device)
+  
     model.eval()
     video_submodel = VideoEnsembleModel(model, args.chunk_size, args.chunk_stride)
     video_submodel.eval()
@@ -204,7 +203,7 @@ if __name__ == '__main__':
     smooth_model.base_classifier.eval()
     smooth_model.base_classifier.to(device)
     outfile = open(
-         outdir / f'output_{model_dict["arch"]}_{args.sigma}_{args.chunk_size}_{args.chunk_stride}_{args.reduction_mode}.csv', 'w')
+         outdir / f'output_{model_dict["arch"]}_{args.sigma}_{args.chunk_size}_{args.chunk_stride}_{args.reduction_mode}.csv', 'a')
     print("idx\tlabel\tpredict\tradius\tcorrect\ttime", file=outfile, flush=True)
 
     for idx, (x, y) in enumerate(test_dl):
@@ -215,8 +214,8 @@ if __name__ == '__main__':
         print(idx, flush=True)
         if idx < args.start_idx:
             continue
-        if idx >= args.start_idx + args.num_images:
-            break
+        # if idx >= args.start_idx + args.num_images:
+        #     break
         x = x.to(device)
         y = y.to(device)
         #print('input', x[:,:,:16,...].shape)

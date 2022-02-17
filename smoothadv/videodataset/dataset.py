@@ -10,7 +10,7 @@ import pickle
 import glob
 #import dircache
 import pdb
-
+import h5py
 
 def get_test_video(opt, frame_path, Total_frames):
     """
@@ -28,18 +28,20 @@ def get_test_video(opt, frame_path, Total_frames):
     if Total_frames < opt.sample_duration: loop = 1
     
     if opt.modality == 'RGB': 
-        while len(clip) < max(opt.sample_duration, Total_frames):
+        f = h5py.File(frame_path, 'r')
+        data = f[frame_path.split("/")[-1][:-5]][()]
+        
+        for i in range(max(opt.sample_duration, Total_frames)):
             try:
-                im = Image.open(os.path.join(frame_path, '%05d.jpg'%(i+1)))
+                d = np.squeeze(data[i]).astype(np.uint8)
+                im = Image.fromarray(d)
+                
                 clip.append(im.copy())
                 im.close()
-            except:
-                pass
-            i += 1
-            
-            if loop==1 and i == Total_frames:
-                i = 0
-
+            except Exception as e:
+                print("Exception", len(clip), e)
+                pass        
+        f.close()
     elif opt.modality == 'Flow':  
         while len(clip) < 2*max(opt.sample_duration, Total_frames):
             try:
@@ -74,6 +76,7 @@ def get_test_video(opt, frame_path, Total_frames):
             
             if loop==1 and i == Total_frames:
                 i = 0
+
     return clip
 
 def get_train_video(opt, frame_path, Total_frames):
@@ -206,7 +209,9 @@ class HMDB51_test(Dataset):
         frame_path = os.path.join(self.opt.frame_dir, video[1], video[0])
 
         if self.opt.only_RGB:
+            
             Total_frames = len(glob.glob(glob.escape(frame_path) +  '/0*.jpg'))  
+  
         else:
             Total_frames = len(glob.glob(glob.escape(frame_path) +  '/TVL1jpg_y_*.jpg'))
 
@@ -253,14 +258,14 @@ class UCF101_test(Dataset):
             split_lab_filenames = [f for f in split_lab_filenames if 'test' in f]
       
         self.data = []                                     # (filename , lab_id)
-        print("f",os.path.join(self.opt.annotation_path, split_lab_filenames[0]))
         f = open(os.path.join(self.opt.annotation_path, split_lab_filenames[0]), 'r')
         for line in f:
             class_id = self.class_idx.get(line.split('/')[0]) - 1
-            if os.path.exists(os.path.join(self.opt.frame_dir, line.strip('\n')[:-4])) == True:
-                self.data.append((os.path.join(self.opt.frame_dir, line.strip('\n')[:-4]), class_id))
+            
+            if os.path.exists(os.path.join(self.opt.frame_dir, line.strip('\n')[:-4])+".hdf5") == True: #check if hdf5 file exists
+                self.data.append((os.path.join(self.opt.frame_dir, line.strip('\n')[:-4])+".hdf5", class_id))
             else:
-                print((os.path.join(self.opt.frame_dir, line.strip('\n')[:-4]), class_id))
+                print(os.path.join(self.opt.frame_dir, line.strip('\n')[:-4])+".hdf5")
         f.close()
         print("Length of data", len(self.data))
         
@@ -276,10 +281,13 @@ class UCF101_test(Dataset):
         frame_path = os.path.join(self.opt.frame_dir, self.idx_class.get(label_id + 1), video[0])
 
         if self.opt.only_RGB:
-            Total_frames = len(glob.glob(glob.escape(frame_path) +  '/0*.jpg'))
+            # Total_frames = len(glob.glob(glob.escape(frame_path) +  '/0*.jpg'))
+            f = h5py.File(frame_path, 'r')
+            data = f[frame_path.split("/")[-1][:-5]]
+            Total_frames = data.shape[0]
         else:
             Total_frames = len(glob.glob(glob.escape(frame_path) +  '/TVL1jpg_y_*.jpg'))
-       
+
         if self.train_val_test == 0: 
             clip = get_test_video(self.opt, frame_path, Total_frames)
         else:

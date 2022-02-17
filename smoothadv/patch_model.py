@@ -286,7 +286,7 @@ class PatchSmooth(nn.Module):
         count1 = counts[top2[0]]
         count2 = counts[top2[1]]
         if binom_test(count1, count1 + count2, p=0.5) > alpha:
-            return Smooth.ABSTAIN, count1, count2
+            return PatchSmooth.ABSTAIN, count1, count2
         else:
             return top2[0], count1, count2
 
@@ -390,9 +390,20 @@ class VideoPatchSmooth(nn.Module):
             #print('chunks_shape',chunks.shape)
             for i in range(b):
                 for j in range(self.num_subvids):
-                    f_i = np.random.randint(0, f - self.subvideo_size)
-                    #print(chunks[i,j,...].shape, x[i, ...][:, f_i:f_i+self.chunk_size,...].shape)
-                    subvids[i, j, ...] = x[i, ...][:, f_i:f_i + self.subvideo_size,...]
+                    
+                    if(f <= self.subvideo_size):
+                        f_i = 0
+                        for k in range(self.subvideo_size - f): 
+                            #repeat last frame
+                            try:
+                                subvids[i, j, :, f_i, :, :] = x[i, :, f_i, :, :]
+                                f_i += 1
+                            except:
+                                pass
+                    else:
+                        f_i = np.random.randint(0, f - self.subvideo_size)
+                        #print(chunks[i,j,...].shape, x[i, ...][:, f_i:f_i+self.chunk_size,...].shape)
+                        subvids[i, j, ...] = x[i, ...][:, f_i:f_i + self.subvideo_size,...]
         return subvids
 
     def forward(self, x):
@@ -601,7 +612,7 @@ class BaseVideoRandomizedSmooth(object):
         pABar = self._lower_confidence_bound(nA, n, alpha)
         #print('Smooth', pABar, cAHat)
         if pABar < 0.5:
-            return Smooth.ABSTAIN, 0.0
+            return BaseVideoRandomizedSmooth.ABSTAIN, 0.0
         else:
             radius = self.sigma * norm.ppf(pABar)
             return cAHat, radius
@@ -625,7 +636,7 @@ class BaseVideoRandomizedSmooth(object):
         count1 = counts[top2[0]]
         count2 = counts[top2[1]]
         if binom_test(count1, count1 + count2, p=0.5) > alpha:
-            return Smooth.ABSTAIN
+            return BaseVideoRandomizedSmooth.ABSTAIN
         else:
             return top2[0]
 
