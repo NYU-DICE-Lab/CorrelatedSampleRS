@@ -336,7 +336,7 @@ class PatchSmooth(nn.Module):
                 #sys.exit()
                 counts += self._count_arr(predictions.cpu().numpy(),
                                           self.num_classes)
-            print(counts)
+            #print(counts)
             return counts
 
     def _count_arr(self, arr: np.ndarray, length: int) -> np.ndarray:
