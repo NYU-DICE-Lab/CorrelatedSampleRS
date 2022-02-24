@@ -181,7 +181,7 @@ if __name__ == '__main__':
     else:
         print('Unsupported dataset!')
     test_dl = DataLoader(ds, batch_size=1, shuffle=False, num_workers=args.n_workers)
-    print("Length of test_dl: ", len(test_dl))
+    # print("Length of test_dl: ", len(test_dl))
     args.num_classes = 101 
     # for the generate_model function here, we use chunk size to create the model rather than sample duration.
     # Unlike the original script, we use sample duration to mean 
@@ -198,6 +198,7 @@ if __name__ == '__main__':
     if args.basers:
         smooth_model = BaseVideoRandomizedSmooth(video_submodel, args.num_classes, args.sigma)
     else:
+        print("Using Smooth model")
         smooth_model = VideoPatchSmooth(video_submodel, args.num_subvideos, args.subvideo_size, args.subvideo_stride, args.reduction_mode, args.num_classes, args.sigma, args.random_subvideos)    
     
     smooth_model.base_classifier.eval()
@@ -207,10 +208,7 @@ if __name__ == '__main__':
     print("idx\tlabel\tpredict\tradius\tcorrect\ttime", file=outfile, flush=True)
 
     for idx, (x, y) in enumerate(test_dl):
-        #print(x.shape)
-        #x = x.reshape(x.shape[0]*x.shape[1], x.shape[2], x.shape[3]).to(device)
-        #x = x.permute(0, 2, 1, 3, 4).contiguous().to(device)
-        #print('input', x.shape, y.shape)
+       
         print(idx, flush=True)
         if idx < args.start_idx:
             continue
@@ -218,8 +216,8 @@ if __name__ == '__main__':
         #     break
         x = x.to(device)
         y = y.to(device)
-        #print('input', x[:,:,:16,...].shape)
-        #print(smooth_model.base_classifier(x[:,:,:16,...]))
+        print("x", x.shape)
+     
         # Certify
         tic = perf_counter()
         prediction, radius = smooth_model.certify(

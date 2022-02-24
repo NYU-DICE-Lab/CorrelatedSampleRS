@@ -81,10 +81,10 @@ cifar_path = Path(rpath / 'CIFAR10')
 sigma=1.0
 max_radius=2.0
 radius_step=0.01
-get_accuracy_plots(f'/home/mp5847/src/CorrelatedSampleRS/vidtest_max/output_resnext-101_0.25_16_16_max.csv' , '', "/home/mp5847/src/CorrelatedSampleRS/vidtest_max/output_resnext-101_0.25_16_16_max", max_radius, radius_step)
-get_accuracy_plots(f'/home/mp5847/src/CorrelatedSampleRS/vidtest_max/output_resnext-101_0.5_16_16_max.csv' , '', "/home/mp5847/src/CorrelatedSampleRS/vidtest_max/output_resnext-101_0.5_16_16_max", max_radius, radius_step)
-get_accuracy_plots(f'/home/mp5847/src/CorrelatedSampleRS/vidtest_max/output_resnext-101_1.0_16_16_max.csv' , '', "/home/mp5847/src/CorrelatedSampleRS/vidtest_max/output_resnext-101_1.0_16_16_max", max_radius, radius_step)
+get_accuracy_plots(f'/home/mp5847/src/CorrelatedSampleRS/vidtest_max1_128f/output_resnext-101_0.25_16_16_max.csv' , '', "/home/mp5847/src/CorrelatedSampleRS/vidtest_max/output_resnext-101_0.25_16_16_max_128f", max_radius, radius_step)
+get_accuracy_plots(f'/home/mp5847/src/CorrelatedSampleRS/vidtest_max1_128f/output_resnext-101_0.5_16_16_max.csv' , '', "/home/mp5847/src/CorrelatedSampleRS/vidtest_max/output_resnext-101_0.5_16_16_max_128f", max_radius, radius_step)
+get_accuracy_plots(f'/home/mp5847/src/CorrelatedSampleRS/vidtest_max1_128f/output_resnext-101_1.0_16_16_max.csv' , '', "/home/mp5847/src/CorrelatedSampleRS/vidtest_max/output_resnext-101_1.0_16_16_max_128f", max_radius, radius_step)
 
-get_accuracy_plots(f'/home/mp5847/src/CorrelatedSampleRS/vidtest_baseline/output_resnext-101_0.25_16_16_baseline.csv' , '', "/home/mp5847/src/CorrelatedSampleRS/vidtest_baseline/output_resnext-101_0.25_16_16_baseline", max_radius, radius_step)
-get_accuracy_plots(f'/home/mp5847/src/CorrelatedSampleRS/vidtest_baseline/output_resnext-101_0.5_16_16_baseline.csv' , '', "/home/mp5847/src/CorrelatedSampleRS/vidtest_baseline/output_resnext-101_0.5_16_16_baseline", max_radius, radius_step)
-get_accuracy_plots(f'/home/mp5847/src/CorrelatedSampleRS/vidtest_baseline/output_resnext-101_1.0_16_16_baseline.csv' , '', "/home/mp5847/src/CorrelatedSampleRS/vidtest_baseline/output_resnext-101_1.0_16_16_baseline", max_radius, radius_step)
+get_accuracy_plots(f'/home/mp5847/src/CorrelatedSampleRS/vidtest_baseline1_128f/output_resnext-101_0.25_16_16_baseline.csv' , '', "/home/mp5847/src/CorrelatedSampleRS/vidtest_baseline/output_resnext-101_0.25_16_16_baseline_128f", max_radius, radius_step)
+get_accuracy_plots(f'/home/mp5847/src/CorrelatedSampleRS/vidtest_baseline1_128f/output_resnext-101_0.5_16_16_baseline.csv' , '', "/home/mp5847/src/CorrelatedSampleRS/vidtest_baseline/output_resnext-101_0.5_16_16_baseline_128f", max_radius, radius_step)
+get_accuracy_plots(f'/home/mp5847/src/CorrelatedSampleRS/vidtest_baseline1_128f/output_resnext-101_1.0_16_16_baseline.csv' , '', "/home/mp5847/src/CorrelatedSampleRS/vidtest_baseline/output_resnext-101_1.0_16_16_baseline_128f", max_radius, radius_step)

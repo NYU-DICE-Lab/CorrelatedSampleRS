@@ -26,22 +26,33 @@ def get_test_video(opt, frame_path, Total_frames):
     i = 0
     loop = 0
     if Total_frames < opt.sample_duration: loop = 1
-    
+
+    #get all the frames
     if opt.modality == 'RGB': 
         f = h5py.File(frame_path, 'r')
         data = f[frame_path.split("/")[-1][:-5]][()]
         
-        for i in range(max(opt.sample_duration, Total_frames)):
+        while len(clip) < max(opt.sample_duration, Total_frames):
             try:
                 d = np.squeeze(data[i]).astype(np.uint8)
                 im = Image.fromarray(d)
-                
                 clip.append(im.copy())
                 im.close()
             except Exception as e:
-                print("Exception", len(clip), e)
-                pass        
+                print("Exception", len(clip), e, "total frames", Total_frames)
+                pass   
+            i += 1   
+
+            if loop==1 and i == Total_frames:
+                i = 0  
         f.close()
+    
+
+        # else:
+        #     #sample random sample_duration consecutive frames
+        #     start_frame = np.random.randint(0, Total_frames - opt.subvideo_size)
+        #     clip = clip[start_frame:start_frame+opt.subvideo_size]
+
     elif opt.modality == 'Flow':  
         while len(clip) < 2*max(opt.sample_duration, Total_frames):
             try:
@@ -76,7 +87,6 @@ def get_test_video(opt, frame_path, Total_frames):
             
             if loop==1 and i == Total_frames:
                 i = 0
-
     return clip
 
 def get_train_video(opt, frame_path, Total_frames):
@@ -292,7 +302,7 @@ class UCF101_test(Dataset):
             clip = get_test_video(self.opt, frame_path, Total_frames)
         else:
             clip = get_train_video(self.opt, frame_path, Total_frames)
-                    
+        print("datalader out:", scale_crop(clip, self.train_val_test, self.opt).shape)
         return((scale_crop(clip, self.train_val_test, self.opt), label_id))
 
 class Kinetics_test(Dataset):

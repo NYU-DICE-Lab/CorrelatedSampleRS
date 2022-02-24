@@ -19,8 +19,6 @@ import math
 from torch.nn import functional as F
 matplotlib.use('Agg')
 
-
-
 class PatchModel(nn.Module):
     """
     Patchwise smoothing
@@ -380,7 +378,6 @@ class VideoPatchSmooth(nn.Module):
 
     def get_subvideos(self, x):
         b, c, f, h, w = x.shape
-        #print('x.shape', x.shape)
         #print(self.patch_stride)
         if not self.random_patches:
             subvids = x.unfold(2, self.subvideo_size, self.subvideo_stride).permute(0, 1, 5, 2, 3, 4).contiguous() 
@@ -413,9 +410,11 @@ class VideoPatchSmooth(nn.Module):
                         f_i = np.random.randint(0, f - self.subvideo_size)
                         #print(chunks[i,j,...].shape, x[i, ...][:, f_i:f_i+self.chunk_size,...].shape)
                         subvids[i, j, ...] = x[i, ...][:, f_i:f_i + self.subvideo_size,...]
+        print("in video patch smooth subvids shape", subvids.shape)
         return subvids
 
     def forward(self, x):
+        
         patches = self.get_patches(x)
         outputs = self.base_classifier(patches)
         if self.reduction == 'mean':
@@ -559,17 +558,19 @@ class VideoEnsembleModel(nn.Module):
         self.base_classifier = base_classifier
         self.chunk_size = chunk_size
         self.chunk_stride = chunk_stride
+        # print("chunk size", self.chunk_size)
 
     def forward(self, x):
-        #print('in ensemble',x.shape)
+        # print('in ensemble',x.shape)
         #import sys
         #sys.exit()
-        #print(x.shape)
+        print("in ensemble x shape", x.shape)
         chunks = x.unfold(2, self.chunk_size, self.chunk_stride).permute(0, 2, 1, 5, 3, 4)
-        #print('in ensembel chunk ',chunks.shape)
+        print('in ensembel chunk unfold ',chunks.shape)
         bs, cnum, ch, f, w, h = chunks.shape
         chunks = chunks.reshape(bs*cnum, ch, f, w, h)
         #print('in ensembel chunk 2',chunks.shape)
+        print("chunks shape", chunks.shape)
         logits = self.base_classifier(chunks)
         #print('in ensembel logits',logits.shape)
         logits = logits.reshape(bs, cnum, -1)
@@ -659,15 +660,18 @@ class BaseVideoRandomizedSmooth(object):
         :param batch_size:
         :return: an ndarray[int] of length num_classes containing the per-class counts
         """
-        #print(x.shape)
+        print("_sample_noise", ceil(num / batch_size))
         with torch.no_grad():
             counts = np.zeros(self.num_classes, dtype=int)
             for _ in range(ceil(num / batch_size)):
                 this_batch_size = min(batch_size, num)
+                # print("batch size",batch_size)
+                # print("num",num)
                 num -= this_batch_size
-
+                
                 batch = x.repeat((this_batch_size, 1, 1, 1, 1))
                 noise = torch.randn_like(batch, device='cuda') * self.sigma
+                # print('_sample_noise',batch.shape, noise.shape)
                 predictions = self.base_classifier(batch + noise).argmax(1)
                 counts += self._count_arr(predictions.cpu().numpy(), self.num_classes)
             return counts
