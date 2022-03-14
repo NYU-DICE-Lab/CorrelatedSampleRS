@@ -19,6 +19,8 @@ import math
 from torch.nn import functional as F
 matplotlib.use('Agg')
 
+
+
 class PatchModel(nn.Module):
     """
     Patchwise smoothing
@@ -334,7 +336,7 @@ class PatchSmooth(nn.Module):
                 #sys.exit()
                 counts += self._count_arr(predictions.cpu().numpy(),
                                           self.num_classes)
-            print(counts)
+            #print(counts)
             return counts
 
     def _count_arr(self, arr: np.ndarray, length: int) -> np.ndarray:
@@ -369,8 +371,7 @@ class VideoPatchSmooth(nn.Module):
         self.num_subvids = num_subvideos
         self.subvideo_size = subvideo_size
         self.subvideo_stride = subvideo_stride
-        #self.chunk_size = chunk_size
-        #self.chunk_stride = chunk_stride
+
         self.reduction = reduction
         self.num_classes = num_classes
         self.sigma = sigma
@@ -378,13 +379,18 @@ class VideoPatchSmooth(nn.Module):
 
     def get_subvideos(self, x):
         b, c, f, h, w = x.shape
+
+        #repeat last frame to fill up subvideo_size
+        if(f < self.subvideo_size):
+            for i in range(self.subvideo_size - f):
+                x = torch.cat((x, x[:,:,f-1:f,:,:]), dim=2)
+   
         #print(self.patch_stride)
         if not self.random_patches:
             subvids = x.unfold(2, self.subvideo_size, self.subvideo_stride).permute(0, 1, 5, 2, 3, 4).contiguous() 
             #b, num_chunks, chunksize, ch, frame_wd, frame_ht
             gen_num_subvideos = subvids.shape[1] #
-            #patches = patches.reshape(
-            #    b, c, gen_num_patches, self.patch_size, self.patch_size)
+           
             if gen_num_subvideos > self.num_subvids:
                 subvids = subvids[:, :self.num_subvids, ...]
         else:
@@ -396,25 +402,15 @@ class VideoPatchSmooth(nn.Module):
             #print('chunks_shape',chunks.shape)
             for i in range(b):
                 for j in range(self.num_subvids):
-                    
                     if(f <= self.subvideo_size):
                         f_i = 0
-                        for k in range(self.subvideo_size - f): 
-                            #repeat last frame
-                            try:
-                                subvids[i, j, :, f_i, :, :] = x[i, :, f_i, :, :]
-                                f_i += 1
-                            except:
-                                pass
                     else:
                         f_i = np.random.randint(0, f - self.subvideo_size)
-                        #print(chunks[i,j,...].shape, x[i, ...][:, f_i:f_i+self.chunk_size,...].shape)
-                        subvids[i, j, ...] = x[i, ...][:, f_i:f_i + self.subvideo_size,...]
-        print("in video patch smooth subvids shape", subvids.shape)
+                        
+                    subvids[i, j, ...] = x[i, ...][:, f_i:f_i + self.subvideo_size,...]
         return subvids
 
     def forward(self, x):
-        
         patches = self.get_patches(x)
         outputs = self.base_classifier(patches)
         if self.reduction == 'mean':
@@ -439,9 +435,9 @@ class VideoPatchSmooth(nn.Module):
         #print('input size', x.shape)
         chunks = self.get_subvideos(x)
         #print('chunk_size', chunks.shape)
-        counts_selection = self._sample_noise(chunks[0], n0, batch_size)
+        counts_selection = self._sample_noise(chunks[0], n0, batch_size, True)
         cAhat = counts_selection.argmax().item()
-        counts_estimation = self._sample_noise(chunks[0], n, batch_size)
+        counts_estimation = self._sample_noise(chunks[0], n, batch_size, False)
         nA = counts_estimation[cAhat].item()
         pABar = self._lower_confidence_bound(nA, n, alpha)
         if pABar < 0.5:
@@ -456,31 +452,7 @@ class VideoPatchSmooth(nn.Module):
         """
         raise Exception("Not implemented")
 
-
-    # def predict(self, x: torch.tensor, n: int, alpha: float, batch_size: int) -> int:
-    #     """ Monte Carlo algorithm for evaluating the prediction of g at x.  With probability at least 1 - alpha, the
-    #     class returned by this method will equal g(x).
-
-    #     This function uses the hypothesis test described in https://arxiv.org/abs/1610.03944
-    #     for identifying the top category of a multinomial distribution.
-
-    #     :param x: the input [channel x height x width]
-    #     :param n: the number of Monte Carlo samples to use
-    #     :param alpha: the failure probability
-    #     :param batch_size: batch size to use when evaluating the base classifier
-    #     :return: the predicted class, or ABSTAIN
-    #     """
-    #     self.base_classifier.eval()
-    #     counts = self._sample_noise(x, n, batch_size)
-    #     top2 = counts.argsort()[::-1][:2]
-    #     count1 = counts[top2[0]]
-    #     count2 = counts[top2[1]]
-    #     if binom_test(count1, count1 + count2, p=0.5) > alpha:
-    #         return Smooth.ABSTAIN, count1, count2
-    #     else:
-    #         return top2[0], count1, count2
-
-    def _sample_noise(self, x: torch.tensor, num: int, batch_size) -> np.ndarray:
+    def _sample_noise(self, x: torch.tensor, num: int, batch_size, save) -> np.ndarray:
         """ Sample the base classifier's prediction under noisy corruptions of the input x.
 
         :param x: the input [chunks x frame x channel x width x height]
@@ -488,10 +460,7 @@ class VideoPatchSmooth(nn.Module):
         :param batch_size:
         :return: an ndarray[int] of length num_classes containing the per-class counts
         """
-        #print('certify input',x.shape)
-        #import sys
-        #sys.exit()
-        #print(x.shape)
+        prediction_all = []
         with torch.no_grad():
             counts = np.zeros(self.num_classes, dtype=int)
             for _ in range(ceil(num / batch_size)):
@@ -507,25 +476,27 @@ class VideoPatchSmooth(nn.Module):
                 #print(batch.shape)
                 predictions = F.softmax(self.base_classifier(batch), dim=-1)#.argmax(1)
                 predictions = predictions.view(pn, c, -1)
-                #print('in certify',predictions.shape)
-               
-                #import sys
-                #sys.exit()
-                #pred_labels = predictions.argmax(1)
+   
                 if self.reduction == 'max':
                     pred_maxs = predictions.max(0)[0]
                 if self.reduction == 'mean':
                     pred_maxs = predictions.mean(0)
-                #print('in certify2', pred_maxs.shape)
+
+                prediction_all.append(pred_maxs)
                 predictions = pred_maxs.argmax(1)
-                #print(predictions.shape)
-                #print(predictions)
-                #print(predictions.shape, pred_maxs.shape)
-                #import sys
-                #sys.exit()
+                
                 counts += self._count_arr(predictions.cpu().numpy(),
                                           self.num_classes)
-            #print(counts)
+            prediction_all = torch.cat(prediction_all, dim=0)
+            if(save == True):
+                import json
+                print('prediction_all',prediction_all.shape)
+                with open('data.json') as json_file:
+                    data = json.load(json_file)
+
+                with open(f'{data.split("/")[-1]}.json', 'w') as outfile:
+                    json.dump(prediction_all.cpu().numpy().tolist(), outfile)
+            
             return counts
 
     def _count_arr(self, arr: np.ndarray, length: int) -> np.ndarray:
@@ -558,28 +529,20 @@ class VideoEnsembleModel(nn.Module):
         self.base_classifier = base_classifier
         self.chunk_size = chunk_size
         self.chunk_stride = chunk_stride
-        # print("chunk size", self.chunk_size)
 
     def forward(self, x):
-        # print('in ensemble',x.shape)
-        #import sys
-        #sys.exit()
-        print("in ensemble x shape", x.shape)
+  
         chunks = x.unfold(2, self.chunk_size, self.chunk_stride).permute(0, 2, 1, 5, 3, 4)
-        print('in ensembel chunk unfold ',chunks.shape)
+        
         bs, cnum, ch, f, w, h = chunks.shape
         chunks = chunks.reshape(bs*cnum, ch, f, w, h)
-        #print('in ensembel chunk 2',chunks.shape)
-        print("chunks shape", chunks.shape)
+        
         logits = self.base_classifier(chunks)
-        #print('in ensembel logits',logits.shape)
+        
         logits = logits.reshape(bs, cnum, -1)
-        #print('in ensembel logits2 ',logits.shape)
-        #logits = logits.view(chunks.size(0), self.chunk_size, -1)
-        #print(logits.shape)
+        
         logits = logits.mean(1)
-        #print(logits.argmax(-1), logits.mean(1))
-        #print(logits.shape)
+        
         return logits
 
 
@@ -614,11 +577,11 @@ class BaseVideoRandomizedSmooth(object):
         """
         self.base_classifier.eval()
         # draw samples of f(x+ epsilon)
-        counts_selection = self._sample_noise(x, n0, batch_size)
+        counts_selection = self._sample_noise(x, n0, batch_size, True)
         # use these samples to take a guess at the top class
         cAHat = counts_selection.argmax().item()
         # draw more samples of f(x + epsilon)
-        counts_estimation = self._sample_noise(x, n, batch_size)
+        counts_estimation = self._sample_noise(x, n, batch_size, False)
         # use these samples to estimate a lower bound on pA
         nA = counts_estimation[cAHat].item()
         pABar = self._lower_confidence_bound(nA, n, alpha)
@@ -652,7 +615,7 @@ class BaseVideoRandomizedSmooth(object):
         else:
             return top2[0]
 
-    def _sample_noise(self, x: torch.tensor, num: int, batch_size) -> np.ndarray:
+    def _sample_noise(self, x: torch.tensor, num: int, batch_size, save) -> np.ndarray:
         """ Sample the base classifier's prediction under noisy corruptions of the input x.
 
         :param x: the input [channel x width x height]
@@ -660,20 +623,30 @@ class BaseVideoRandomizedSmooth(object):
         :param batch_size:
         :return: an ndarray[int] of length num_classes containing the per-class counts
         """
-        print("_sample_noise", ceil(num / batch_size))
+        prediction_all = []
         with torch.no_grad():
             counts = np.zeros(self.num_classes, dtype=int)
             for _ in range(ceil(num / batch_size)):
                 this_batch_size = min(batch_size, num)
-                # print("batch size",batch_size)
-                # print("num",num)
                 num -= this_batch_size
-                
+
                 batch = x.repeat((this_batch_size, 1, 1, 1, 1))
                 noise = torch.randn_like(batch, device='cuda') * self.sigma
-                # print('_sample_noise',batch.shape, noise.shape)
-                predictions = self.base_classifier(batch + noise).argmax(1)
+                predictions = self.base_classifier(batch + noise)
+
+                prediction_all.append(predictions)
+                predictions = predictions.argmax(1)
                 counts += self._count_arr(predictions.cpu().numpy(), self.num_classes)
+
+            prediction_all = torch.cat(prediction_all, dim=0)
+            if(save == True):
+                import json
+                print('prediction_all',prediction_all.shape)
+                with open('data.json') as json_file:
+                    data = json.load(json_file)
+
+                with open(f'{data.split("/")[-1]}.json', 'w') as outfile:
+                    json.dump(prediction_all.cpu().numpy().tolist(), outfile)
             return counts
 
     def _count_arr(self, arr: np.ndarray, length: int) -> np.ndarray:

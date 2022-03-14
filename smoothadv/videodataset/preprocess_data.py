@@ -273,7 +273,7 @@ def get_std(dataset = 'HMDB51'):
     elif dataset == 'HMDB51':
         return [0.20658244577568*255, 0.20174469333003*255, 0.19790770088352*255]
     elif dataset == "UCF101":
-        return [0.2564,0.2479,0.2582]
+        return [0.2564,0.2479,2582]
 
 
 def scale_crop(clip, train, opt): 
@@ -382,4 +382,5 @@ def scale_crop(clip, train, opt):
                 j += 1
                 if j == 3:
                     j = 0
+                    
     return(processed_clip)

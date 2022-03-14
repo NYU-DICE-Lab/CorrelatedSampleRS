@@ -11,6 +11,7 @@ import glob
 #import dircache
 import pdb
 import h5py
+import json
 
 def get_test_video(opt, frame_path, Total_frames):
     """
@@ -30,11 +31,11 @@ def get_test_video(opt, frame_path, Total_frames):
     #get all the frames
     if opt.modality == 'RGB': 
         f = h5py.File(frame_path, 'r')
-        data = f[frame_path.split("/")[-1][:-5]][()]
-        
-        while len(clip) < max(opt.sample_duration, Total_frames):
+        with open('data.json', 'w') as outfile:
+            json.dump(frame_path, outfile)
+        while len(clip) < Total_frames:
             try:
-                d = np.squeeze(data[i]).astype(np.uint8)
+                d = np.squeeze(f[str(i+1)]).astype(np.uint8)
                 im = Image.fromarray(d)
                 clip.append(im.copy())
                 im.close()
@@ -46,12 +47,6 @@ def get_test_video(opt, frame_path, Total_frames):
             if loop==1 and i == Total_frames:
                 i = 0  
         f.close()
-    
-
-        # else:
-        #     #sample random sample_duration consecutive frames
-        #     start_frame = np.random.randint(0, Total_frames - opt.subvideo_size)
-        #     clip = clip[start_frame:start_frame+opt.subvideo_size]
 
     elif opt.modality == 'Flow':  
         while len(clip) < 2*max(opt.sample_duration, Total_frames):
@@ -293,8 +288,7 @@ class UCF101_test(Dataset):
         if self.opt.only_RGB:
             # Total_frames = len(glob.glob(glob.escape(frame_path) +  '/0*.jpg'))
             f = h5py.File(frame_path, 'r')
-            data = f[frame_path.split("/")[-1][:-5]]
-            Total_frames = data.shape[0]
+            Total_frames = len(f.keys())
         else:
             Total_frames = len(glob.glob(glob.escape(frame_path) +  '/TVL1jpg_y_*.jpg'))
 
@@ -302,7 +296,6 @@ class UCF101_test(Dataset):
             clip = get_test_video(self.opt, frame_path, Total_frames)
         else:
             clip = get_train_video(self.opt, frame_path, Total_frames)
-        print("datalader out:", scale_crop(clip, self.train_val_test, self.opt).shape)
         return((scale_crop(clip, self.train_val_test, self.opt), label_id))
 
 class Kinetics_test(Dataset):
