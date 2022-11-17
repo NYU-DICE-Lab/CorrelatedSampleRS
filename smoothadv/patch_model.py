@@ -150,20 +150,28 @@ class PatchSmooth(nn.Module):
     Smooth the output of a patch classifier. (Uncorrelated noise)
     """
 
-    def __init__(self, base_classifier, num_patches, patch_size, patch_stride=1, reduction='mean', num_classes=10, sigma=0.12, random_patches=False):
+    def __init__(self, base_classifier, insize, num_patches, patch_size, patch_stride=1, reduction='mean', num_classes=10, sigma=0.12, random_patches=False):
         super().__init__()
-        self.base_classifier = base_classifier
+        self.base_classifier = nn.Sequential(
+            nn.Upsample(size=(insize, insize), mode='bilinear'),
+            base_classifier
+        ) # Upsample patches to size required by base classifier
         self.num_patches = num_patches
         self.patch_size = patch_size
+        self.insize = insize
         self.patch_stride = patch_stride
         self.reduction = reduction
         self.num_classes = num_classes
         self.sigma = sigma
         self.random_patches = random_patches
+        
+    
+
 
     def get_patches(self, x):
         b, c, h, w = x.shape
         print(self.patch_stride)
+        plt.imsave('./orig.png', x[0,...].permute(1,2,0).detach().cpu().numpy())
         if not self.random_patches:
             h2 = h//self.patch_stride
             w2 = w//self.patch_stride
@@ -190,6 +198,8 @@ class PatchSmooth(nn.Module):
                     y_i = np.random.randint(0, w - self.patch_size)
                     patches[i, j, ...] = x[i, ...][:, x_i:x_i +
                                                       self.patch_size, y_i:y_i + self.patch_size]
+            ##patches = self.upsample(patches.permute(0, 2, 1, 3, 4).contiguous())
+            patches = patches.permute(0, 2, 1, 3, 4).contiguous()
         return patches
 
     def forward(self, x):

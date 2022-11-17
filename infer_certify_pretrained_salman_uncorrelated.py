@@ -106,13 +106,15 @@ if __name__ == '__main__':
 
     # Load data
     if args.dataset == 'imagenet':
+        args.insize=224
         indices = np.load('imagenet_indices.npy')
         imagenet_val = Subset(
-            ImageNet(root=args.dpath, split='val', transform=Compose([Resize((args.new_size, args.new_size)), ToTensor()])), indices)
+            ImageNet(root=args.dpath, split='val', transform=Compose([ToTensor()])), indices)
         test_dl = DataLoader(imagenet_val, batch_size=1)
     else:
+        args.insize=32
         test_dl = DataLoader(CIFAR10(root=args.dpath, train=False, download=True, transform=Compose(
-            [Resize((args.new_size, args.new_size)), ToTensor()])), shuffle=False, batch_size=1)
+            [ToTensor()])), shuffle=False, batch_size=1)
     # Load model
 
     # smooth_model = build_model(
@@ -122,7 +124,8 @@ if __name__ == '__main__':
         model_data['arch'], dataset=args.dataset, normalize=args.normalize)
     base_model.load_state_dict(model_data['state_dict'])
     args.num_classes = 10 if args.dataset == 'cifar10' or args.dataset == 'imagenette' else 1000
-    smooth_model = PatchSmooth(base_model, num_patches=args.num_patches, patch_size=args.patch_size, patch_stride=args.patch_stride,
+    
+    smooth_model = PatchSmooth(base_model, num_patches=args.num_patches, insize=args.insize, patch_size=args.patch_size, patch_stride=args.patch_stride,
                                reduction=args.reduction_mode, num_classes=args.num_classes, sigma=args.sigma, random_patches=args.random_patches)
     smooth_model.base_classifier.eval()
     smooth_model.base_classifier.to(device)
