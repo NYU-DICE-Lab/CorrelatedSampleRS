@@ -170,8 +170,6 @@ class PatchSmooth(nn.Module):
 
     def get_patches(self, x):
         b, c, h, w = x.shape
-        print(self.patch_stride)
-        plt.imsave('./orig.png', x[0,...].permute(1,2,0).detach().cpu().numpy())
         if not self.random_patches:
             h2 = h//self.patch_stride
             w2 = w//self.patch_stride
